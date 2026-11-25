@@ -60,6 +60,7 @@ Some good ones to start with:
 - `actions.clapRadius` / `actions.clapLoudness`: how far you see vs. how far it hears
 - `pulse.fadeTime`: how long the world stays visible after a pulse
 - `creature.loseTrackTime`: how long you must stay silent to shake it off
+- `creature.eyeGlow` / `creature.eyeGlowHunting`: how visible its white eyes are in total darkness (0 = only when a pulse lights them)
 
 If the game runs slowly, set `graphics.bloom` to `false` or lower `graphics.maxPixelRatio`.
 

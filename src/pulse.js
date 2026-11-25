@@ -220,6 +220,52 @@ void main() {
 `;
 
 // ---------------------------------------------------------------------
+// Creature eyes: one glowing point per eye. They catch the light of any
+// pulse that reaches them ("eyeshine", like an animal's eyes in headlights)
+// and can also glow faintly on their own (uStare).
+// ---------------------------------------------------------------------
+const EYE_VERT = /* glsl */ `
+uniform float uEyeSize;   // glow size in pixels at 1 m
+uniform float uEyeShine;  // how strongly pulses light the eyes
+uniform float uStare;     // glow even in total darkness (set from JavaScript)
+uniform float uOpen;      // 1 = open, 0 = blinking
+attribute float aSide;    // -1 left eye, +1 right eye
+varying float vBright;
+varying float vSide;
+void main() {
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  float front;
+  vec3 light = echoLight(wp.xyz, vec3(0.0), front);
+  // eyes reflect even faint light strongly (sqrt), so they shine from far away
+  float shine = clamp(sqrt(dot(light, vec3(0.33))) * uEyeShine * 0.6 + front * 2.0, 0.0, 1.6);
+  vBright = (shine + uStare + uForceLit) * uOpen;
+  vSide = aSide;
+  vec4 mv = viewMatrix * wp;
+  // never smaller than 12 px, so two white slits stay visible down a long tunnel
+  gl_PointSize = vBright > 0.01 ? clamp(uEyeSize / -mv.z, 12.0, 512.0) : 0.0;
+  gl_Position = projectionMatrix * mv;
+}
+`;
+
+const EYE_FRAG = /* glsl */ `
+varying float vBright;
+varying float vSide;
+void main() {
+  vec2 c = gl_PointCoord - 0.5;
+  // tilt each eye so the inner corners point down: a cold, slanted stare
+  float a = vSide * 0.38;
+  c = mat2(cos(a), -sin(a), sin(a), cos(a)) * c;
+  float d = length(vec2(c.x, c.y * 2.6));      // squash into a thin almond
+  float core = smoothstep(0.2, 0.13, d);        // the hard white eye
+  float halo = exp(-dot(c, c) * 40.0) * 0.25;   // soft glow around it
+  // brightness is capped so the bloom glow never smears away the eye shape
+  float k = core * 1.15 * min(vBright, 1.0) + halo * min(vBright, 1.2);
+  if (k < 0.003) discard;
+  gl_FragColor = vec4(vec3(0.95, 0.98, 1.0) * k, 1.0);
+}
+`;
+
+// ---------------------------------------------------------------------
 // PulseSystem: stores pulses and builds the materials that read them
 // ---------------------------------------------------------------------
 export class PulseSystem {
@@ -280,8 +326,8 @@ export class PulseSystem {
     this.shared.uTime.value = time;
   }
 
-  // Build a material. kind = 'surface' | 'line' | 'points'.
-  // opts: tint [r,g,b], tintMix, selfGlow, fadeScale, forceLit, lineBoost
+  // Build a material. kind = 'surface' | 'line' | 'points' | 'eye'.
+  // opts: tint [r,g,b], tintMix, selfGlow, fadeScale, forceLit, lineBoost, eyeSize
   makeMaterial(kind, opts = {}) {
     const own = {
       uTint: { value: new THREE.Color(...(opts.tint || [1, 1, 1])) },
@@ -291,12 +337,17 @@ export class PulseSystem {
       uForceLit: { value: opts.forceLit ?? 0 },
       uFill: { value: opts.fill ?? CONFIG.pulse.surfaceFill },
       uLineBoost: { value: opts.lineBoost ?? 1.8 },
+      uEyeSize: { value: opts.eyeSize ?? CONFIG.creature.eyeSize },
+      uEyeShine: { value: CONFIG.creature.eyeShine },
+      uStare: { value: 0 },
+      uOpen: { value: 1 },
     };
     const uniforms = { ...this.shared, ...own }; // shared refs + own values
     const shaders = {
       surface: [SURFACE_VERT, SURFACE_FRAG],
       line: [LINE_VERT, LINE_FRAG],
       points: [POINT_VERT, POINT_FRAG],
+      eye: [EYE_VERT, EYE_FRAG],
     }[kind];
     const mat = new THREE.ShaderMaterial({
       uniforms,
@@ -310,7 +361,7 @@ export class PulseSystem {
       mat.polygonOffsetFactor = 1;
       mat.polygonOffsetUnits = 1;
     }
-    if (kind === 'points') {
+    if (kind === 'points' || kind === 'eye') {
       mat.transparent = true;
       mat.depthWrite = false;
       mat.blending = THREE.AdditiveBlending;
@@ -325,9 +376,11 @@ function makeArray(fn) {
 
 // Helper used everywhere: turn a geometry into a "glowing sketch" object
 // (dark faces + bright edge lines) using the given materials.
+// Pass lineMat = null for a solid object with no outline.
 export function makeEchoObject(geometry, surfaceMat, lineMat, edgeAngle = 25) {
   const group = new THREE.Group();
   group.add(new THREE.Mesh(geometry, surfaceMat));
+  if (!lineMat) return group;
   const lines = new THREE.LineSegments(new THREE.EdgesGeometry(geometry, edgeAngle), lineMat);
   lines.layers.set(1); // layer 1 = skipped by the depth pre-pass (see main.js)
   group.add(lines);

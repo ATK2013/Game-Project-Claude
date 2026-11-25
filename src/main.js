@@ -113,7 +113,6 @@ const audio = new AudioEngine();
 const ui = new UI();
 const input = new Input(renderer.domElement);
 
-const red = PC.creatureColor;
 const mats = {
   surface: pulses.makeMaterial('surface'),
   line: pulses.makeMaterial('line'),
@@ -122,11 +121,12 @@ const mats = {
   forkSurface: pulses.makeMaterial('surface', { tint: PC.forkColor, tintMix: 0.7 }),
   forkLine: pulses.makeMaterial('line', { tint: PC.forkColor, tintMix: 0.7, selfGlow: 0.035, lineBoost: 2 }),
   elevatorLine: pulses.makeMaterial('line', { tint: PC.elevatorColor, tintMix: 0.5 }),
-  creatureSurface: pulses.makeMaterial('surface', { tint: red, tintMix: 1, fadeScale: CONFIG.creature.visibleFade, fill: 0.25 }),
-  creatureLine: pulses.makeMaterial('line', { tint: red, tintMix: 1, fadeScale: CONFIG.creature.visibleFade, lineBoost: 2.5 }),
-  scareSurface: pulses.makeMaterial('surface', { tint: red, tintMix: 1, forceLit: 0.05 }),
-  scareLine: pulses.makeMaterial('line', { tint: red, tintMix: 1, forceLit: 1.2 }),
+  creatureEye: pulses.makeMaterial('eye'), // its body is pitch black: only the eyes glow
+  // jumpscare face: black, a barely-there grey outline, blazing white eyes
+  scareLine: pulses.makeMaterial('line', { tint: [0.6, 0.65, 0.7], tintMix: 1, forceLit: 0.07 }),
+  scareEye: pulses.makeMaterial('eye', { forceLit: 1.0, eyeSize: 75 }),
 };
+const VOID = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide }); // pitch black
 
 // ---------------------------------------------------------------------
 // The game object: everything the modules need to talk to each other.
@@ -305,27 +305,41 @@ function updateFear(dt) {
 function startJumpscare() {
   game.state = 'jumpscare';
   game.timers.scare = 0;
+  game.timers.shrieked = false;
   game.stats.forks = game.items.collected;
   game.items.dispose();
-  audio.shriek();
-  ui.flash('rgba(255,0,0,0.9)', 500);
-  ui.setFear(0.9);
+  ui.setFear(0.6);
   game.creature.body.root.visible = false; // its body would block the view of the face
-  game.scareHead = buildHead({ surface: mats.scareSurface, line: mats.scareLine }, 1);
+  game.scareHead = buildHead({ surface: VOID, line: mats.scareLine }, mats.scareEye, 1);
   camera.add(game.scareHead);
   updateJumpscare(0);
 }
 
+// 1) a moment of dead silence: two white eyes, perfectly still, staring.
+// 2) the shriek, a red flash, and the face lunges into yours.
+const STARE_TIME = 0.35;
 function updateJumpscare(dt) {
   const t = (game.timers.scare += dt);
-  const k = Math.min(1, t / 0.55);
   const head = game.scareHead;
-  // lunge from 2.5 m away to right in your face, shaking violently
-  head.position.set((Math.random() - 0.5) * 0.04, -0.3 + (Math.random() - 0.5) * 0.04, -2.5 + 2.15 * k * k);
-  head.rotation.set((Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.3);
+  if (t < STARE_TIME) {
+    head.position.set(0, -0.3, -2.2);
+    head.rotation.set(0.1, 0, 0.35); // head cocked to one side
+    return;
+  }
+  if (!game.timers.shrieked) {
+    game.timers.shrieked = true;
+    audio.shriek();
+    ui.flash('rgba(255,0,0,0.9)', 500);
+    ui.setFear(0.9);
+  }
+  const k = Math.min(1, (t - STARE_TIME) / 0.3);
+  // lunge from 2.2 m away to right in your face, shaking violently
+  const shake = 0.02 + k * 0.04;
+  head.position.set((Math.random() - 0.5) * shake, -0.3 + (Math.random() - 0.5) * shake, -2.2 + 1.85 * k * k);
+  head.rotation.set((Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.2, 0.35 * (1 - k) + (Math.random() - 0.5) * 0.3);
   head.scale.setScalar(1 + k * 0.5);
   fx.uniforms.uFear.value = 1;
-  if (t > 1.5) gameOver();
+  if (t > STARE_TIME + 1.3) gameOver();
 }
 
 function gameOver() {

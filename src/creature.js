@@ -19,7 +19,8 @@ const rand = ([min, max]) => min + Math.random() * (max - min);
 const VOID = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide }); // pitch black
 
 // ---------------------------------------------------------------------
-// Body: built from simple boxes and a stretched sphere
+// Body: pitch black, no outline. You only ever see its silhouette
+// blotting out the glowing walls behind it... and its white eyes.
 // ---------------------------------------------------------------------
 
 // A box whose pivot is at its top (so it swings like a limb) or bottom.
@@ -29,59 +30,94 @@ function limb(w, h, d, hangDown = true) {
   return g;
 }
 
+// mats = { surface, line }. line can be null (no outline).
 function part(geom, mats, x = 0, y = 0, z = 0) {
   const obj = makeEchoObject(geom, mats.surface, mats.line, 20);
   obj.position.set(x, y, z);
   return obj;
 }
 
+// Two glowing points, one per eye (see the 'eye' shader in pulse.js).
+function buildEyes(eyeMat) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([-0.062, 0.29, 0.21, 0.062, 0.29, 0.21], 3));
+  g.setAttribute('aSide', new THREE.Float32BufferAttribute([-1, 1], 1));
+  const eyes = new THREE.Points(g, eyeMat);
+  eyes.layers.set(1);            // skipped by the depth pre-pass (see main.js)
+  eyes.frustumCulled = false;    // tiny object: never let it pop out of view
+  return eyes;
+}
+
 // Build the head separately: the jumpscare re-uses it.
-export function buildHead(mats, mouthOpen = 0) {
+export function buildHead(mats, eyeMat, mouthOpen = 0) {
   const head = new THREE.Group();
   const skull = new THREE.SphereGeometry(1, 7, 6);
-  skull.scale(0.17, 0.3, 0.2);
+  skull.scale(0.16, 0.31, 0.2);
   skull.translate(0, 0.24, 0);
   head.add(part(skull, mats));
-  // a thin mouth slit (opens into a black void for the jumpscare)
-  const jawH = 0.012 + mouthOpen * 0.16;
-  const mouthMats = mouthOpen > 0 ? { surface: VOID, line: mats.line } : mats;
-  head.add(part(new THREE.BoxGeometry(0.13, jawH, 0.03), mouthMats, 0, 0.1 - jawH / 2, 0.17));
+  // a thin mouth slit (opens into a gaping black void for the jumpscare)
+  const jawH = 0.012 + mouthOpen * 0.2;
+  head.add(part(new THREE.BoxGeometry(0.12, jawH, 0.03), { surface: VOID, line: mats.line }, 0, 0.1 - jawH / 2, 0.17));
   if (mouthOpen > 0) {
-    // jagged teeth lines around the open mouth
-    for (let i = 0; i < 7; i++) {
-      const tooth = new THREE.ConeGeometry(0.008, 0.04, 3);
-      const x = -0.055 + i * 0.018;
-      head.add(part(tooth.clone().rotateX(Math.PI), mats, x, 0.09, 0.185));
-      head.add(part(tooth, mats, x, 0.1 - jawH + 0.015, 0.185));
+    // rows of thin needle teeth around the open mouth
+    for (let i = 0; i < 9; i++) {
+      const tooth = new THREE.ConeGeometry(0.006, 0.05, 3);
+      const x = -0.052 + i * 0.013;
+      head.add(part(tooth.clone().rotateX(Math.PI), mats, x, 0.085, 0.185));
+      head.add(part(tooth, mats, x, 0.1 - jawH + 0.02, 0.185));
     }
   }
+  head.add(buildEyes(eyeMat));
   return head;
 }
 
-export function buildCreatureBody(mats) {
+// A leg that bends backwards at the knee, like an animal's hind leg.
+function buildLeg(mats, x) {
+  const thigh = part(limb(0.075, 0.72, 0.075), mats, x, 0, 0);
+  thigh.rotation.x = -0.35;
+  const shin = part(limb(0.055, 0.78, 0.055), mats, 0, -0.72, 0);
+  shin.rotation.x = 0.7;            // knee bends the "wrong" way
+  shin.add(part(new THREE.BoxGeometry(0.06, 0.04, 0.22), mats, 0, -0.78, 0.07)); // long foot
+  thigh.add(shin);
+  return thigh;
+}
+
+// A long arm with a bent elbow and long, thin fingers.
+function buildArm(mats, x) {
+  const upper = part(limb(0.045, 0.7, 0.045), mats, x, 0.8, 0);
+  const fore = part(limb(0.035, 0.72, 0.035), mats, 0, -0.7, 0);
+  fore.rotation.x = -0.3;
+  for (let f = -1.5; f <= 1.5; f++) {
+    const finger = part(limb(0.012, 0.34, 0.012), mats, f * 0.018, -0.72, 0);
+    finger.rotation.x = -0.15 - Math.abs(f) * 0.05;
+    fore.add(finger);
+  }
+  upper.add(fore);
+  return upper;
+}
+
+export function buildCreatureBody(mats, eyeMat) {
   const root = new THREE.Group();
   const hips = new THREE.Group();
-  hips.position.y = 1.35;
+  hips.position.y = 1.32;
   root.add(hips);
-  const legL = part(limb(0.07, 1.35, 0.07), mats, -0.1, 0, 0);
-  const legR = part(limb(0.07, 1.35, 0.07), mats, 0.1, 0, 0);
+  const legL = buildLeg(mats, -0.1);
+  const legR = buildLeg(mats, 0.1);
   hips.add(legL, legR);
   const torso = new THREE.Group();
   torso.rotation.x = 0.25; // hunched forward
   hips.add(torso);
-  torso.add(part(limb(0.28, 0.85, 0.12, false), mats));
-  for (let i = 0; i < 4; i++) torso.add(part(new THREE.BoxGeometry(0.31, 0.018, 0.15), mats, 0, 0.35 + i * 0.1, 0));
-  const armL = part(limb(0.045, 1.25, 0.045), mats, -0.2, 0.8, 0);
-  const armR = part(limb(0.045, 1.25, 0.045), mats, 0.2, 0.8, 0);
-  for (const arm of [armL, armR]) {
-    for (let f = -1; f <= 1; f++) arm.add(part(limb(0.014, 0.28, 0.014), mats, f * 0.025, -1.25, 0));
-  }
+  // tapered chest: wide shoulders, starved thin waist
+  const chest = new THREE.CylinderGeometry(0.19, 0.07, 0.85, 4).rotateY(Math.PI / 4).scale(1, 1, 0.45).translate(0, 0.42, 0);
+  torso.add(part(chest, mats));
+  const armL = buildArm(mats, -0.2);
+  const armR = buildArm(mats, 0.2);
   torso.add(armL, armR);
-  torso.add(part(limb(0.05, 0.22, 0.05, false), mats, 0, 0.84, 0));
-  const head = buildHead(mats);
-  head.position.y = 1.02;
+  torso.add(part(limb(0.045, 0.32, 0.045, false), mats, 0, 0.82, 0)); // long neck
+  const head = buildHead(mats, eyeMat);
+  head.position.y = 1.12;
   torso.add(head);
-  root.scale.setScalar(C.height / 2.95);
+  root.scale.setScalar(C.height / 3.0);
   return { root, legL, legR, armL, armR, torso, head };
 }
 
@@ -94,7 +130,8 @@ export class Creature {
     this.level = game.level;
     const [sx, sz] = this.level.creatureSpawn;
     this.position = this.level.toWorld(sx, sz);
-    this.body = buildCreatureBody({ surface: game.mats.creatureSurface, line: game.mats.creatureLine });
+    this.eyeMat = game.mats.creatureEye;
+    this.body = buildCreatureBody({ surface: VOID, line: null }, this.eyeMat);
     game.world.add(this.body.root);
     this.state = WANDER;
     this.path = [];
@@ -107,6 +144,11 @@ export class Creature {
     this.walkPhase = 0;
     this.twitch = 0;
     this.lastStepCaption = -999;
+    this.flare = 0;              // extra eye glow right after it clicks
+    this.blinkTimer = rand(C.blinkEvery);
+    this.blinkLeft = 0;          // seconds left in the current blink
+    this.breathTimer = 1;
+    this.lastBreathCaption = -999;
     this.syncBody();
   }
 
@@ -192,8 +234,15 @@ export class Creature {
     const moved = this.followPath(dt, speed * this.diff.creatureSpeed);
     this.updateSteps(moved);
     this.updateClicks(dt);
+    this.updateBreathing(dt);
     this.animate(dt, moved);
+    this.updateEyes(dt);
     this.syncBody();
+  }
+
+  distanceToPlayer() {
+    const p = this.game.player.position;
+    return Math.hypot(p.x - this.position.x, p.z - this.position.z);
   }
 
   // Decide what to do next based on the current state.
@@ -255,26 +304,82 @@ export class Creature {
     const head = this.headPosition();
     this.game.pulses.emit({ origin: head, radius: C.clickRadius, color: CONFIG.pulse.creatureColor, strength: 0.9 });
     this.game.audio.creatureClick(head);
+    this.flare = 0.5; // its eyes flare as it clicks
     this.game.caption('[clicking — {dir}, {dist}]', head);
   }
 
-  // Swing limbs while walking and twitch the head now and then.
+  // Swing limbs while walking; stare at you, or twitch the head.
   animate(dt, moved) {
     const b = this.body;
     this.walkPhase += moved * 2.2;
     const s = Math.sin(this.walkPhase);
-    b.legL.rotation.x = s * 0.45;
-    b.legR.rotation.x = -s * 0.45;
+    b.legL.rotation.x = -0.35 + s * 0.4;
+    b.legR.rotation.x = -0.35 - s * 0.4;
     b.armL.rotation.x = -s * 0.3 + 0.1;
     b.armR.rotation.x = s * 0.3 + 0.1;
     b.armL.rotation.z = -0.06 + Math.sin(this.game.time * 1.3) * 0.04;
     b.armR.rotation.z = 0.06 - Math.sin(this.game.time * 1.1) * 0.04;
     b.torso.rotation.x = this.state === HUNT ? 0.5 : 0.25;
     b.torso.rotation.z = Math.sin(this.walkPhase * 0.5) * 0.06;
-    if ((this.twitch -= dt) <= 0) {
-      // creepy sudden head jerk
-      this.twitch = 0.6 + Math.random() * 2.5;
-      b.head.rotation.set((Math.random() - 0.4) * 0.6, (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 0.7);
+    if (this.shouldStare()) this.stareAtPlayer(dt);
+    else this.twitchHead(dt);
+  }
+
+  // It turns its head toward you when it is close and paying attention.
+  shouldStare() {
+    const d = this.distanceToPlayer();
+    return d < C.stareDistance && (this.state !== WANDER || d < C.stareDistance / 3);
+  }
+
+  stareAtPlayer(dt) {
+    const head = this.body.head, p = this.game.player.position;
+    let rel = Math.atan2(p.x - this.position.x, p.z - this.position.z) - this.yaw;
+    while (rel > Math.PI) rel -= Math.PI * 2;
+    while (rel < -Math.PI) rel += Math.PI * 2;
+    rel = Math.max(-1.4, Math.min(1.4, rel));
+    // look down at your eyes (its head is far above yours), minus the hunch
+    const down = Math.atan2(C.height - CONFIG.player.eyeHeight, this.distanceToPlayer()) - this.body.torso.rotation.x;
+    const k = Math.min(1, dt * 5);
+    head.rotation.y += (rel - head.rotation.y) * k;
+    head.rotation.x += (down - head.rotation.x) * k;
+    head.rotation.z += (0.3 - head.rotation.z) * k * 0.3; // slowly cocks its head
+  }
+
+  twitchHead(dt) {
+    if ((this.twitch -= dt) > 0) return;
+    // creepy sudden head jerk
+    this.twitch = 0.6 + Math.random() * 2.5;
+    this.body.head.rotation.set((Math.random() - 0.4) * 0.6, (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 0.7);
+  }
+
+  // Eyes: faint glow when near you (stronger when hunting), a flare after
+  // each click, and blinks — except while hunting: then it never blinks.
+  updateEyes(dt) {
+    const d = this.distanceToPlayer();
+    let stare = 0;
+    if (d < C.eyeGlowDistance) {
+      const near = Math.min(1, (1 - d / C.eyeGlowDistance) * 1.6);
+      stare = (this.state === HUNT ? C.eyeGlowHunting : C.eyeGlow) * near;
+    }
+    this.flare = Math.max(0, this.flare - dt * 1.5);
+    if (this.state !== HUNT && (this.blinkTimer -= dt) <= 0) {
+      this.blinkTimer = rand(C.blinkEvery);
+      this.blinkLeft = 0.15;
+    }
+    this.blinkLeft -= dt;
+    this.eyeMat.uniforms.uStare.value = stare + this.flare;
+    this.eyeMat.uniforms.uOpen.value = this.blinkLeft > 0 ? 0 : 1;
+  }
+
+  // Close by, you can hear it breathe. Slow, wet, rattling breaths.
+  updateBreathing(dt) {
+    const d = this.distanceToPlayer();
+    if (d > C.breathDistance || (this.breathTimer -= dt) > 0) return;
+    this.breathTimer = this.state === HUNT ? 1.5 : 2.6 + Math.random();
+    this.game.audio.creatureBreath(this.headPosition(), 1 - d / C.breathDistance);
+    if (this.game.time - this.lastBreathCaption > 8) {
+      this.lastBreathCaption = this.game.time;
+      this.game.caption('[slow, rattling breaths — {dir}, very close]', this.position, true);
     }
   }
 

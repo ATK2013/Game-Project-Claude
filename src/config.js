@@ -97,8 +97,16 @@ export const CONFIG = {
     catchRadius: 0.9,      // how close it must get to catch you
     spawnMinDistance: 32,  // it starts at least this far (path distance) from you
     height: 2.7,           // how tall it is
-    visibleFade: 0.4,      // its outline fades this times faster than walls
     stepLength: 0.9,       // metres between its dragging footsteps
+    // --- its eyes: the body is pitch black, only the white eyes show ---
+    eyeSize: 110,          // size of the eye glow (bigger = larger eyes on screen)
+    eyeShine: 5,           // how brightly the eyes catch the light of a pulse
+    eyeGlowDistance: 14,   // within this distance the eyes glow faintly even in darkness
+    eyeGlow: 0.3,          // how bright that faint glow is (0 = only visible when lit)
+    eyeGlowHunting: 0.7,   // ...and how bright while it is hunting you
+    blinkEvery: [4, 9],    // min/max seconds between blinks (it never blinks while hunting)
+    stareDistance: 16,     // closer than this, its head turns to stare at you
+    breathDistance: 8,     // closer than this, you can hear it breathing
   },
 
   // ---------------------------------------------------------------

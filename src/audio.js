@@ -242,6 +242,29 @@ export class AudioEngine {
     this.screech(out, 0.7, 500, 1300);
   }
 
+  // A slow, rattling breath: a hissing inhale, then a wet, croaking exhale.
+  // closeness 0..1 makes it louder.
+  creatureBreath(pos, closeness) {
+    const out = this.output(pos, { gain: 0.25 + closeness * 0.5, reverb: 0.35 });
+    const t = this.now;
+    const inhale = this.noiseBurst(out, { t, f: 700, q: 1.5, dur: 0.7, attack: 0.5, gain: 0.5 });
+    inhale.frequency.exponentialRampToValueAtTime(1400, t + 1.1);
+    const exhale = this.noiseBurst(out, { t: t + 1.25, f: 520, q: 1.2, dur: 0.9, attack: 0.15, gain: 0.7 });
+    exhale.frequency.exponentialRampToValueAtTime(260, t + 2.3);
+    // the "rattle": a very low buzzing growl under the exhale
+    const rattle = this.ctx.createOscillator();
+    rattle.type = 'sawtooth';
+    rattle.frequency.setValueAtTime(34, t + 1.25);
+    rattle.frequency.linearRampToValueAtTime(26, t + 2.2);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 380;
+    const g = this.envelope(t + 1.25, 0.12, 0.35, 0.9);
+    rattle.connect(lp).connect(g).connect(out);
+    rattle.start(t + 1.25);
+    rattle.stop(t + 2.4);
+  }
+
   // Shared screech recipe: distorted sawtooth with a wobbling pitch.
   screech(dest, dur, f0, f1) {
     const ctx = this.ctx, t = this.now;
