@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ECHO</title>
+  <style>
+    :root {
+      --cyan: #b8f1ff;
+      --dim: #5d7d86;
+      --red: #ff3a2a;
+      --gold: #ffc35a;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%; overflow: hidden;
+      background: #000; color: var(--cyan);
+      font-family: "Courier New", ui-monospace, Menlo, Consolas, monospace;
+      user-select: none;
+    }
+    canvas { display: block; }
+    .hidden { display: none !important; }
+
+    /* ---------- Full-screen menus ---------- */
+    .screen {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; text-align: center;
+      background: rgba(0, 0, 0, 0.82); z-index: 20; padding: 16px; overflow-y: auto;
+    }
+    #title { background: radial-gradient(circle at 50% 45%, rgba(0,20,26,0.55), rgba(0,0,0,0.92) 70%); }
+    h1 {
+      font-size: clamp(56px, 12vw, 128px); letter-spacing: 0.35em; margin: 0 0 0 0.35em;
+      font-weight: normal; color: #e6fbff;
+      text-shadow: 0 0 12px #6fdcff, 0 0 40px #2aa9d6, 0 0 90px #0d5a73;
+      animation: flicker 6s infinite;
+    }
+    h2 { font-weight: normal; letter-spacing: 0.25em; font-size: clamp(28px, 6vw, 52px); margin: 0 0 12px; }
+    .pitch { color: var(--dim); margin: 8px 0 22px; font-size: 16px; letter-spacing: 0.05em; }
+    .controls {
+      display: grid; grid-template-columns: auto auto; gap: 4px 22px;
+      text-align: left; font-size: 14px; color: #9fc3cc; margin: 6px 0 20px;
+    }
+    .controls b { color: var(--cyan); font-weight: normal; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin: 8px 0; }
+    button {
+      font: inherit; color: var(--cyan); background: transparent; cursor: pointer;
+      border: 1px solid #2f5761; padding: 10px 22px; letter-spacing: 0.15em; min-width: 110px;
+      transition: all 0.15s;
+    }
+    button:hover { border-color: var(--cyan); box-shadow: 0 0 14px rgba(110, 220, 255, 0.35); }
+    button.selected { border-color: var(--cyan); background: rgba(110, 220, 255, 0.12); }
+    button.big { font-size: 20px; padding: 14px 40px; margin-top: 10px; }
+    label.opt { font-size: 14px; color: #9fc3cc; cursor: pointer; margin: 10px; }
+    .note { color: var(--dim); font-size: 13px; margin-top: 16px; }
+    .diffhelp { color: var(--dim); font-size: 12px; height: 16px; }
+    #gameover h2 { color: var(--red); text-shadow: 0 0 20px rgba(255, 40, 30, 0.6); }
+    #win h2 { color: #b9ffb9; text-shadow: 0 0 20px rgba(120, 255, 120, 0.5); }
+    .stats { margin: 12px 0 20px; min-width: 260px; }
+    .stats div { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #16282d; }
+    .stats span { color: var(--dim); }
+    .stats b { font-weight: normal; }
+
+    /* ---------- The pulsing ring behind the title ---------- */
+    .ring {
+      position: absolute; left: 50%; top: 32%; width: 10px; height: 10px; border-radius: 50%;
+      border: 1px solid rgba(160, 235, 255, 0.6); transform: translate(-50%, -50%);
+      animation: ring 4s linear infinite; pointer-events: none;
+    }
+    .ring.r2 { animation-delay: 2s; }
+    @keyframes ring {
+      from { width: 10px; height: 10px; opacity: 0.9; }
+      to { width: 900px; height: 900px; opacity: 0; }
+    }
+    @keyframes flicker {
+      0%, 92%, 100% { opacity: 1; } 93% { opacity: 0.4; } 94% { opacity: 1; } 96% { opacity: 0.6; }
+    }
+
+    /* ---------- In-game HUD ---------- */
+    #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+    #cooldown { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; transform: translate(-50%, -50%) rotate(-90deg); }
+    #cooldown circle { fill: none; stroke-width: 1.5; }
+    #cooldown .track { stroke: rgba(150, 220, 240, 0.12); }
+    #cooldownArc { stroke: rgba(170, 235, 255, 0.55); transition: stroke 0.2s; }
+    #cooldown.ready #cooldownArc { stroke: rgba(200, 245, 255, 0.85); }
+    #dot { position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px; background: rgba(200, 245, 255, 0.6); border-radius: 50%; }
+    .hudbox { position: absolute; bottom: 22px; font-size: 13px; letter-spacing: 0.15em; color: #8fbcc8; text-shadow: 0 0 6px rgba(80, 200, 255, 0.4); }
+    #forks { left: 24px; bottom: 44px; color: var(--gold); text-shadow: 0 0 6px rgba(255, 180, 60, 0.5); }
+    #pebbles { left: 24px; }
+    #noise { right: 24px; width: 180px; }
+    #noise .bar { height: 6px; border: 1px solid #2f5761; margin-top: 6px; }
+    #noiseFill { height: 100%; width: 0%; background: #9fe8ff; transition: width 0.08s linear; }
+    #hint { position: absolute; top: 24px; width: 100%; text-align: center; font-size: 13px; color: var(--dim); letter-spacing: 0.1em; transition: opacity 2s; }
+
+    /* ---------- Captions ---------- */
+    #captions {
+      position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      z-index: 15; pointer-events: none; width: min(90vw, 700px);
+    }
+    .caption {
+      background: rgba(0, 0, 0, 0.7); padding: 4px 12px; font-size: 15px; color: #cfeef6;
+      transition: opacity 0.6s; text-align: center;
+    }
+    .caption.important { color: #ffd7c9; }
+    .caption.fade { opacity: 0; }
+
+    /* ---------- Effects ---------- */
+    #flash { position: fixed; inset: 0; opacity: 0; pointer-events: none; z-index: 12; }
+    #vignette {
+      position: fixed; inset: 0; opacity: 0; pointer-events: none; z-index: 11;
+      background: radial-gradient(ellipse at center, transparent 45%, rgba(120, 0, 0, 0.75) 100%);
+    }
+    #error { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 30px; color: #ff9988; z-index: 50; text-align: center; }
+  </style>
+
+  <!-- Three.js, pinned to an exact version, loaded from a CDN -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- ===== Title screen ===== -->
+  <div id="title" class="screen">
+    <div class="ring"></div><div class="ring r2"></div>
+    <h1>ECHO</h1>
+    <div class="pitch">In the dark, sound is sight. And something is listening.</div>
+    <div class="controls">
+      <b>WASD</b><span>move</span>
+      <b>MOUSE</b><span>look around</span>
+      <b>SHIFT</b><span>run (fast, loud)</span>
+      <b>C</b><span>creep (slow, silent)</span>
+      <b>SPACE / LEFT CLICK</b><span>clap: big echo, very loud</span>
+      <b>Q / RIGHT CLICK</b><span>snap: small echo, quiet</span>
+      <b>E</b><span>throw a pebble (distraction)</span>
+      <b>ESC</b><span>pause</span>
+    </div>
+    <div class="pitch" style="margin:0 0 10px">Find the 4 humming tuning forks. Then reach the old elevator.</div>
+    <div class="row" id="difficulty">
+      <button data-diff="easy">EASY</button>
+      <button data-diff="normal">NORMAL</button>
+      <button data-diff="hard">HARD</button>
+    </div>
+    <div class="diffhelp" id="diffHelp"></div>
+    <label class="opt"><input type="checkbox" id="optCaptions" /> Show sound captions</label>
+    <button class="big" id="startBtn">ENTER THE MINE</button>
+    <div class="note">🎧 Headphones recommended — you'll need to hear where it is.</div>
+  </div>
+
+  <!-- ===== Pause ===== -->
+  <div id="pause" class="screen hidden">
+    <h2>PAUSED</h2>
+    <label class="opt"><input type="checkbox" id="optCaptions2" /> Show sound captions</label>
+    <div class="row">
+      <button id="resumeBtn">RESUME</button>
+      <button id="quitBtn">MAIN MENU</button>
+    </div>
+  </div>
+
+  <!-- ===== Game over ===== -->
+  <div id="gameover" class="screen hidden">
+    <h2>IT HEARD YOU</h2>
+    <div class="pitch">The Listener found you in the dark.</div>
+    <div class="stats" id="gameoverStats"></div>
+    <div class="row">
+      <button id="retryBtn">TRY AGAIN</button>
+      <button id="menuBtn1">MAIN MENU</button>
+    </div>
+  </div>
+
+  <!-- ===== Win ===== -->
+  <div id="win" class="screen hidden">
+    <h2>YOU ESCAPED</h2>
+    <div class="pitch">The cage rattles upward. Below you, the clicking fades.</div>
+    <div class="stats" id="winStats"></div>
+    <div class="row">
+      <button id="againBtn">PLAY AGAIN</button>
+      <button id="menuBtn2">MAIN MENU</button>
+    </div>
+  </div>
+
+  <!-- ===== HUD ===== -->
+  <div id="hud" class="hidden">
+    <div id="hint">Clap (SPACE) to see. Every clap tells it where you are.</div>
+    <svg id="cooldown" viewBox="0 0 40 40">
+      <circle class="track" r="16" cx="20" cy="20" />
+      <circle id="cooldownArc" r="16" cx="20" cy="20" />
+    </svg>
+    <div id="dot"></div>
+    <div class="hudbox" id="forks">TUNING FORKS  0/4</div>
+    <div class="hudbox" id="pebbles">PEBBLES  3</div>
+    <div class="hudbox" id="noise">NOISE<div class="bar"><div id="noiseFill"></div></div></div>
+  </div>
+  <div id="captions"></div>
+  <div id="vignette"></div>
+  <div id="flash"></div>
+
+  <script type="module" src="src/main.js"></script>
+  <script>
+    // Friendly message if the page is opened as a file instead of via a server.
+    if (location.protocol === 'file:') {
+      document.body.insertAdjacentHTML('beforeend',
+        '<div id="error">Please run a local server: open a terminal in this folder, run<br><br>' +
+        '<code>python3 -m http.server</code><br><br>then visit http://localhost:8000</div>');
+    }
+  </script>
+</body>
+</html>
