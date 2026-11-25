@@ -286,9 +286,85 @@ export class AudioEngine {
     this.noiseBurst(dest, { type: 'highpass', f: 2500, dur: dur * 0.8, gain: 0.5, attack: 0.01 });
   }
 
+  // ------------------------------------------------------------------
+  // Jumpscare sounds (CONFIG.jumpscare.volume scales them all)
+  // ------------------------------------------------------------------
+  scareOut(gain, reverb) {
+    return this.output(null, { gain: gain * CONFIG.jumpscare.volume, reverb });
+  }
+
+  // Cut the background drone to dead silence (the jumpscare's first beat).
+  silenceAmbience() {
+    if (this.droneOut) this.droneOut.gain.setTargetAtTime(0, this.now, 0.02);
+  }
+
+  // Fade the drone back in (new game / main menu).
+  restoreAmbience() {
+    if (this.droneOut) this.droneOut.gain.setTargetAtTime(A.droneVolume, this.now, 0.8);
+  }
+
+  // A sudden, sharp breath drawn in right beside your ear.
+  sharpInhale() {
+    const out = this.scareOut(0.9, 0.1);
+    const f = this.noiseBurst(out, { f: 900, q: 1.3, dur: 0.28, attack: 0.07, gain: 1 });
+    f.frequency.exponentialRampToValueAtTime(2600, this.now + 0.33);
+  }
+
+  // A deep sub-bass hit you feel in your chest.
+  boom() {
+    const out = this.scareOut(1.0, 0.6);
+    this.tone(out, { f0: 75, f1: 24, dur: 1.4, gain: 1, attack: 0.005 });
+    this.noiseBurst(out, { type: 'lowpass', f: 160, dur: 0.8, gain: 1 });
+  }
+
+  // One bite: teeth clacking together, a bone-deep crunch and a heavy thud.
+  chomp(strength = 1) {
+    const out = this.scareOut(strength, 0.5);
+    const t = this.now;
+    for (let i = 0; i < 4; i++) {
+      const ti = t + i * 0.014 + Math.random() * 0.006;
+      this.noiseBurst(out, { t: ti, f: 1400 + Math.random() * 1600, q: 2.5, dur: 0.035, gain: 1.1 }); // crunch
+    }
+    this.tone(out, { type: 'square', f0: 3400, f1: 2200, dur: 0.018, gain: 0.35 });  // clack
+    this.tone(out, { f0: 130, f1: 38, dur: 0.22, gain: 1.2 });                        // thud
+    this.noiseBurst(out, { type: 'lowpass', f: 380, dur: 0.16, gain: 0.9 });
+  }
+
+  // A distorted, throbbing growl under the chomping.
+  growl(dur) {
+    const ctx = this.ctx, t = this.now;
+    const out = this.scareOut(0.55, 0.4);
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = this.distortCurve;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 1100;
+    const g = this.envelope(t, 0.08, 1, dur);
+    const trem = ctx.createOscillator(), tremGain = ctx.createGain();
+    trem.frequency.value = 17; tremGain.gain.value = 0.45;   // fast throb
+    trem.connect(tremGain).connect(g.gain);
+    shaper.connect(lp).connect(g).connect(out);
+    const oscs = [68, 71.5, 136].map((f) => {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f, t);
+      o.frequency.linearRampToValueAtTime(f * 1.35, t + dur);  // rising in fury
+      o.connect(shaper); o.start(t); o.stop(t + dur + 0.1);
+      return o;
+    });
+    trem.start(t); trem.stop(t + dur + 0.1);
+    return oscs;
+  }
+
+  // The high ringing in your ears after the final bite.
+  tinnitus() {
+    const out = this.scareOut(0.09, 0.2);
+    this.tone(out, { f0: 4100, dur: 3.5, gain: 1, attack: 0.25 });
+    this.tone(out, { f0: 4113, dur: 3.0, gain: 0.5, attack: 0.4 });
+  }
+
   // The jumpscare shriek, right in your face.
   shriek() {
-    const out = this.output(null, { gain: 1.0, reverb: 0.8 });
+    const out = this.scareOut(1.0, 0.8);
     this.screech(out, 1.4, 350, 1700);
     this.screech(out, 1.2, 520, 2300);
     this.tone(out, { f0: 120, f1: 40, dur: 1.0, gain: 0.8, type: 'square' });
@@ -333,6 +409,7 @@ export class AudioEngine {
     const ctx = this.ctx, out = ctx.createGain();
     out.gain.value = A.droneVolume;
     out.connect(this.master);
+    this.droneOut = out; // so the jumpscare can silence it
     const nodes = [];
     for (const [f, type, g] of [[41.2, 'sine', 0.6], [41.7, 'sine', 0.6], [82.6, 'triangle', 0.15]]) {
       const o = ctx.createOscillator(), og = ctx.createGain();

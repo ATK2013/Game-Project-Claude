@@ -47,6 +47,7 @@ then reach the old elevator at the far end of the mine.
 | `src/input.js` | keyboard, mouse and pointer lock |
 | `src/creature.js` | the Listener: body, hearing and AI |
 | `src/items.js` | tuning forks, tin cans, pebbles, elevator |
+| `src/jumpscare.js` | the jumpscare: stare, lunge and the chomping grey jaws |
 | `src/audio.js` | all sounds, synthesised with the Web Audio API |
 | `src/ui.js` | HUD, captions and screens |
 
@@ -61,6 +62,9 @@ Some good ones to start with:
 - `pulse.fadeTime`: how long the world stays visible after a pulse
 - `creature.loseTrackTime`: how long you must stay silent to shake it off
 - `creature.eyeGlow` / `creature.eyeGlowHunting`: how visible its white eyes are in total darkness (0 = only when a pulse lights them)
+
+The jumpscare is intense: `jumpscare.shake` (camera shake and zoom punch, 0 = off for
+motion-sensitive players) and `jumpscare.volume` tone it down.
 
 If the game runs slowly, set `graphics.bloom` to `false` or lower `graphics.maxPixelRatio`.
 

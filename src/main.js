@@ -14,7 +14,8 @@ import { CONFIG } from './config.js';
 import { Level } from './level.js';
 import { PulseSystem } from './pulse.js';
 import { Player } from './player.js';
-import { Creature, buildHead, HUNT } from './creature.js';
+import { Creature, HUNT } from './creature.js';
+import { Jumpscare } from './jumpscare.js';
 import { Items } from './items.js';
 import { AudioEngine } from './audio.js';
 import { UI, describeDirection } from './ui.js';
@@ -127,6 +128,7 @@ const mats = {
   scareEye: pulses.makeMaterial('eye', { forceLit: 1.0, eyeSize: 75 }),
 };
 const VOID = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide }); // pitch black
+const jumpscare = new Jumpscare({ camera, renderer, scene, audio, ui, fx, mats, voidMat: VOID });
 
 // ---------------------------------------------------------------------
 // The game object: everything the modules need to talk to each other.
@@ -135,7 +137,7 @@ const VOID = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSi
 const game = {
   state: 'title',
   time: 0,
-  scene, camera, pulses, audio, ui, mats, input,
+  scene, camera, pulses, audio, ui, mats, input, jumpscare,
   level: null, world: null, player: null, creature: null, items: null,
   difficultyName: CONFIG.defaultDifficulty,
   difficulty: CONFIG.difficulty[CONFIG.defaultDifficulty],
@@ -190,6 +192,7 @@ function startAttract() {
   buildWorld(new Level());
   game.player = new Player(camera, game.level);
   game.state = 'title';
+  audio.restoreAmbience(); // in case we came here straight after the jumpscare
   game.timers.attract = 0.5;
   ui.show('title');
 }
@@ -220,6 +223,7 @@ function newGame() {
   game.creature = new Creature(game);
   game.timers = { clapReady: 0, clapLength: 1, snapReady: 0, drip: 2, heartbeat: 0, hint: 9 };
   if (!game.drone) game.drone = audio.startDrone();
+  audio.restoreAmbience();
   ui.setForks(0, CONFIG.goal.forkCount);
   ui.setPebbles(game.pebbles);
   ui.setFear(0);
@@ -304,52 +308,20 @@ function updateFear(dt) {
 // ---------------------------------------------------------------------
 function startJumpscare() {
   game.state = 'jumpscare';
-  game.timers.scare = 0;
-  game.timers.shrieked = false;
   game.stats.forks = game.items.collected;
   game.items.dispose();
-  ui.setFear(0.6);
   game.creature.body.root.visible = false; // its body would block the view of the face
-  game.scareHead = buildHead({ surface: VOID, line: mats.scareLine }, mats.scareEye, 1);
-  camera.add(game.scareHead);
-  updateJumpscare(0);
-}
-
-// 1) a moment of dead silence: two white eyes, perfectly still, staring.
-// 2) the shriek, a red flash, and the face lunges into yours.
-const STARE_TIME = 0.35;
-function updateJumpscare(dt) {
-  const t = (game.timers.scare += dt);
-  const head = game.scareHead;
-  if (t < STARE_TIME) {
-    head.position.set(0, -0.3, -2.2);
-    head.rotation.set(0.1, 0, 0.35); // head cocked to one side
-    return;
-  }
-  if (!game.timers.shrieked) {
-    game.timers.shrieked = true;
-    audio.shriek();
-    ui.flash('rgba(255,0,0,0.9)', 500);
-    ui.setFear(0.9);
-  }
-  const k = Math.min(1, (t - STARE_TIME) / 0.3);
-  // lunge from 2.2 m away to right in your face, shaking violently
-  const shake = 0.02 + k * 0.04;
-  head.position.set((Math.random() - 0.5) * shake, -0.3 + (Math.random() - 0.5) * shake, -2.2 + 1.85 * k * k);
-  head.rotation.set((Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.2, 0.35 * (1 - k) + (Math.random() - 0.5) * 0.3);
-  head.scale.setScalar(1 + k * 0.5);
-  fx.uniforms.uFear.value = 1;
-  if (t > STARE_TIME + 1.3) gameOver();
+  jumpscare.start(); // the whole sequence lives in jumpscare.js
 }
 
 function gameOver() {
   game.state = 'dead';
-  camera.remove(game.scareHead);
-  ui.flash('rgba(0,0,0,1)', 900);
+  ui.setBlack(false); // fade up from black
   ui.setFear(0);
   fx.uniforms.uFear.value = 0;
   ui.setStats('gameover', game.stats);
   ui.show('gameover');
+  ui.shudder('gameover');
   input.exitLock();
 }
 
@@ -420,7 +392,7 @@ function frame() {
   const dt = Math.min(clock.getDelta(), 0.05); // avoid huge jumps after lag
   if (game.state === 'playing') updatePlaying(dt);
   else if (game.state === 'title') { game.time += dt; updateAttract(dt); }
-  else if (game.state === 'jumpscare') { game.time += dt; updateJumpscare(dt); }
+  else if (game.state === 'jumpscare') { game.time += dt; if (jumpscare.update(dt)) gameOver(); }
   else if (game.state === 'won' || game.state === 'dead') game.time += dt;
   pulses.update(game.time);
   fx.uniforms.uTime.value = game.time;

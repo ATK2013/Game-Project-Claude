@@ -54,6 +54,16 @@
     .note { color: var(--dim); font-size: 13px; margin-top: 16px; }
     .diffhelp { color: var(--dim); font-size: 12px; height: 16px; }
     #gameover h2 { color: var(--red); text-shadow: 0 0 20px rgba(255, 40, 30, 0.6); }
+    .shudder { animation: shudder 0.9s ease-out; }
+    @keyframes shudder {
+      0% { transform: translate(0, 0) scale(1.6); filter: blur(4px); opacity: 0; }
+      10% { transform: translate(-14px, 6px) scale(1.25); opacity: 1; }
+      20% { transform: translate(12px, -8px) scale(1.15); }
+      30% { transform: translate(-9px, 4px) scale(1.08); filter: blur(1px); }
+      45% { transform: translate(6px, -3px) scale(1.03); }
+      60% { transform: translate(-3px, 2px); filter: blur(0); }
+      100% { transform: translate(0, 0) scale(1); }
+    }
     #win h2 { color: #b9ffb9; text-shadow: 0 0 20px rgba(120, 255, 120, 0.5); }
     .stats { margin: 12px 0 20px; min-width: 260px; }
     .stats div { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #16282d; }

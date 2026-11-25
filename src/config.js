@@ -167,6 +167,14 @@ export const CONFIG = {
   },
 
   // ---------------------------------------------------------------
+  // Jumpscare (what happens when it catches you)
+  // ---------------------------------------------------------------
+  jumpscare: {
+    shake: 1.0,            // camera shake + zoom punch strength (0 = none, for motion-sensitive players)
+    volume: 1.0,           // loudness of the jumpscare sounds (0 to 1)
+  },
+
+  // ---------------------------------------------------------------
   // Captions / HUD
   // ---------------------------------------------------------------
   ui: {

@@ -76,6 +76,28 @@ export class UI {
     });
   }
 
+  // Hide or show the in-game HUD and captions.
+  setHud(on) {
+    $('hud').classList.toggle('hidden', !on);
+    if (!on) this.captionBox.innerHTML = '';
+  }
+
+  // Instantly cover the screen in black (true), or fade the black away (false).
+  setBlack(on) {
+    const f = $('flash');
+    f.style.transition = on ? 'none' : 'opacity 900ms ease-out';
+    if (on) f.style.background = '#000';
+    f.style.opacity = on ? 1 : 0;
+  }
+
+  // Make a screen's title shudder (restarts the CSS animation).
+  shudder(screen) {
+    const h = document.querySelector(`#${screen} h2`);
+    h.classList.remove('shudder');
+    void h.offsetWidth; // forces the browser to restart the animation
+    h.classList.add('shudder');
+  }
+
   // Red vignette that creeps in as the creature gets closer. amount 0..1
   setFear(amount) { $('vignette').style.opacity = amount.toFixed(3); }
 
