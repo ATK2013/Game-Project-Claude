@@ -43,9 +43,13 @@ export class Player {
   forward() { return new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)); }
   right() { return new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw)); }
 
-  // Which way the keys say we want to go (length 0 or 1).
+  // Which way the keys (or the mobile joystick) say we want to go (length 0 or 1).
   wishDirection(input) {
     const dir = new THREE.Vector3();
+    if (input.stick && input.stick.mag > 0.12) {
+      dir.addScaledVector(this.forward(), input.stick.y).addScaledVector(this.right(), input.stick.x);
+      return dir.normalize();
+    }
     if (input.isDown('KeyW') || input.isDown('ArrowUp')) dir.add(this.forward());
     if (input.isDown('KeyS') || input.isDown('ArrowDown')) dir.sub(this.forward());
     if (input.isDown('KeyD') || input.isDown('ArrowRight')) dir.add(this.right());
@@ -54,6 +58,12 @@ export class Player {
   }
 
   pickMode(input) {
+    const stick = input.stick;
+    if (stick && stick.mag > 0.12) {
+      // mobile: how far you push the joystick picks the speed
+      if (stick.mag < CONFIG.mobile.creepZone) return 'creep';
+      return stick.mag > CONFIG.mobile.runZone ? 'run' : 'walk';
+    }
     if (input.isDown('KeyC')) return 'creep';
     if (input.isDown('ShiftLeft') || input.isDown('ShiftRight')) return 'run';
     return 'walk';

@@ -193,6 +193,21 @@ export const CONFIG = {
   },
 
   // ---------------------------------------------------------------
+  // Mobile mode (phones and tablets). Turned on automatically on touch
+  // devices. Force it with ?mobile=1 in the address, or turn it off with ?mobile=0.
+  // ---------------------------------------------------------------
+  mobile: {
+    maxPixelRatio: 1.5,    // phones have very sharp screens: cap the resolution to stay smooth
+    bloom: true,           // glow effect (set false if your phone gets hot or slow)
+    dustPerCell: 8,        // fewer flickering dots than on desktop
+    lookSensitivity: 3.2,  // how fast dragging your right thumb turns your head
+    stickRadius: 60,       // size of the movement joystick in pixels
+    creepZone: 0.45,       // push the stick less than this much = creep (silent)
+    runZone: 0.92,         // push it further than this = run (loud)
+    vibrate: true,         // short vibrations on claps and when it bites (Android)
+  },
+
+  // ---------------------------------------------------------------
   // Captions / HUD
   // ---------------------------------------------------------------
   ui: {

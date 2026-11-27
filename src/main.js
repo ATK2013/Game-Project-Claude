@@ -22,9 +22,21 @@ import { UI, describeDirection } from './ui.js';
 import { Input } from './input.js';
 import { Lobby } from './lobby.js';
 import { Multiplayer, spawnOffset } from './multiplayer.js';
+import { detectMobile, TouchControls, vibrate, enterFullscreen } from './touch.js';
 
 const ACT = CONFIG.actions;
 const PC = CONFIG.pulse;
+
+// ---------------------------------------------------------------------
+// Mobile mode: on phones/tablets, use touch controls and lighter graphics
+// ---------------------------------------------------------------------
+const MOBILE = detectMobile();
+document.body.classList.toggle('mobile', MOBILE);
+if (MOBILE) {
+  CONFIG.graphics.maxPixelRatio = CONFIG.mobile.maxPixelRatio;
+  CONFIG.graphics.bloom = CONFIG.mobile.bloom;
+  CONFIG.graphics.dustPerCell = CONFIG.mobile.dustPerCell;
+}
 
 // ---------------------------------------------------------------------
 // Rendering setup
@@ -115,6 +127,8 @@ const pulses = new PulseSystem();
 const audio = new AudioEngine();
 const ui = new UI();
 const input = new Input(renderer.domElement);
+input.mobile = MOBILE;
+const touch = MOBILE ? new TouchControls(input) : null;
 
 const mats = {
   surface: pulses.makeMaterial('surface'),
@@ -262,7 +276,10 @@ function newGame(seed) {
   ui.setForks(0, CONFIG.goal.forkCount);
   ui.setPebbles(game.pebbles);
   ui.setFear(0);
-  document.getElementById('hint').style.opacity = 1;
+  const hint = document.getElementById('hint');
+  hint.textContent = MOBILE ? 'Tap CLAP to see. Every clap tells it where you are.'
+    : 'Clap (SPACE) to see. Every clap tells it where you are.';
+  hint.style.opacity = 1;
   ui.show(null);
   game.state = 'playing';
   input.requestLock();
@@ -292,6 +309,7 @@ function clap() {
   game.timers.clapLength = game.difficulty.clapCooldown;
   game.timers.clapReady = game.time + game.timers.clapLength;
   game.stats.claps++;
+  vibrate(15);
   playerFx('clap', playerSoundOrigin());
 }
 
@@ -578,6 +596,7 @@ const clock = new THREE.Clock();
 function frame() {
   requestAnimationFrame(frame);
   update(Math.min(clock.getDelta(), 0.05)); // limit dt: avoid huge jumps after lag
+  if (touch) touch.setMode(game.state === 'playing' ? 'play' : game.state === 'spectating' ? 'spectate' : null);
   pulses.update(game.time);
   fx.uniforms.uTime.value = game.time;
   composer.render();
@@ -625,14 +644,28 @@ function wireButtons() {
   const on = (id, fn) => document.getElementById(id).addEventListener('click', fn);
   document.querySelectorAll('[data-diff]').forEach((b) => b.addEventListener('click', () => selectDifficulty(b.dataset.diff)));
   selectDifficulty(game.difficultyName);
-  on('startBtn', () => { lobby.notice(''); newGame(); });
+  on('startBtn', () => { lobby.notice(''); if (MOBILE) enterFullscreen(); newGame(); });
   on('retryBtn', () => newGame());
   on('againBtn', () => newGame());
   on('resumeBtn', resume);
   for (const id of ['quitBtn', 'menuBtn1', 'menuBtn2']) on(id, () => { audio.resume(); startAttract(); });
-  on('mpBtn', () => { audio.init(); lobby.notice(''); lobby.openMenu(); });
+  on('mpBtn', () => { audio.init(); if (MOBILE) enterFullscreen(); lobby.notice(''); lobby.openMenu(); });
+  setupModeToggle();
   for (const id of ['lobbyBtn1', 'lobbyBtn2']) on(id, () => game.net && game.net.hostBackToLobby());
   for (const id of ['leaveBtn1', 'leaveBtn2', 'leaveBtn3']) on(id, () => leaveRoom());
+}
+
+// Small link on the title screen to switch between touch and keyboard controls.
+function setupModeToggle() {
+  const btn = document.getElementById('modeToggle');
+  const canTouch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+  if (!MOBILE && !canTouch) { btn.classList.add('hidden'); return; }
+  btn.textContent = MOBILE ? 'Using touch controls — switch to keyboard & mouse' : 'Switch to touch controls';
+  btn.addEventListener('click', () => {
+    const params = new URLSearchParams(location.search);
+    params.set('mobile', MOBILE ? '0' : '1');
+    location.search = params.toString();
+  });
 }
 
 input.on('clap', clap);
@@ -644,6 +677,8 @@ input.on('pause', () => {
   else if (game.state === 'paused' && performance.now() - game.pausedAt > 400) resume();
 });
 input.on('lockchange', (locked) => { if (!locked) pause(); });
+// switching apps / tabs (or locking the phone) pauses the game
+document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 input.on('canvasclick', () => { if (game.state === 'playing' || game.state === 'spectating') input.requestLock(); });
 
 wireButtons();
