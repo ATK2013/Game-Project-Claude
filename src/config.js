@@ -208,7 +208,9 @@ export const CONFIG = {
   // ---------------------------------------------------------------
   jumpscare: {
     shake: 1.0,            // camera shake + zoom punch strength (0 = none, for motion-sensitive players)
-    volume: 1.0,           // loudness of the jumpscare sounds (0 to 1)
+    faceShake: 1.0,        // how violently the face thrashes around the screen (0.3 = much calmer)
+    volume: 1.3,           // loudness of the jumpscare sounds (1 = normal, up to about 1.5)
+    shakeTime: 1.7,        // seconds the face shakes before everything goes black
   },
 
   // ---------------------------------------------------------------
