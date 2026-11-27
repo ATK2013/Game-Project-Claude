@@ -248,6 +248,51 @@ export class AudioEngine {
     }
   }
 
+  // Landing from a jump. strength 0..1
+  thud(pos, strength = 1) {
+    const out = this.output(pos, { gain: 0.35 + strength * 0.4, reverb: 0.35 });
+    this.tone(out, { f0: 110, f1: 45, dur: 0.12, gain: 1 });
+    this.noiseBurst(out, { type: 'lowpass', f: 500, dur: 0.1, gain: 0.8 });
+    this.noiseBurst(out, { type: 'highpass', f: 3000, dur: 0.05, gain: 0.15 }); // gravel
+  }
+
+  // Falling into a crevice: a body hitting rock, then pebbles trickling down.
+  crash(pos) {
+    const out = this.output(pos, { gain: 1.0, reverb: 0.9 });
+    this.tone(out, { f0: 90, f1: 30, dur: 0.35, gain: 1.2 });
+    this.noiseBurst(out, { type: 'lowpass', f: 700, dur: 0.4, gain: 1 });
+    for (let i = 0; i < 7; i++) {
+      this.noiseBurst(out, { t: this.now + 0.15 + Math.random() * 0.9, f: 1500 + Math.random() * 2000, q: 4, dur: 0.03, gain: 0.4 });
+    }
+  }
+
+  // A heavy iron lever being thrown.
+  leverClunk(pos) {
+    const out = this.output(pos, { gain: 0.7, reverb: 0.5 });
+    const f = this.noiseBurst(out, { f: 900, q: 3, dur: 0.18, attack: 0.04, gain: 0.5 }); // rusty creak
+    f.frequency.exponentialRampToValueAtTime(400, this.now + 0.2);
+    this.tone(out, { t: this.now + 0.2, f0: 160, f1: 70, dur: 0.15, gain: 0.9 });       // clunk
+    this.tone(out, { t: this.now + 0.2, type: 'square', f0: 620, f1: 500, dur: 0.06, gain: 0.12 });
+  }
+
+  // An iron gate grinding up or down.
+  gateGrind(pos) {
+    const out = this.output(pos, { gain: 0.8, reverb: 0.8 });
+    const f = this.noiseBurst(out, { f: 300, q: 6, dur: 2.0, attack: 0.2, gain: 0.8 });
+    f.frequency.linearRampToValueAtTime(520, this.now + 2.2);
+    this.tone(out, { type: 'sawtooth', f0: 58, f1: 64, dur: 2.0, gain: 0.25, attack: 0.2 });
+    this.tone(out, { t: this.now + 2.1, f0: 140, f1: 60, dur: 0.3, gain: 0.8 });       // final clank
+  }
+
+  // A big old mine bell: loud, long, metallic.
+  bell(pos) {
+    const out = this.output(pos, { gain: 1.0, reverb: 1.0 });
+    for (const [ratio, g, d] of [[1, 0.6, 4], [2.76, 0.3, 2.5], [5.4, 0.2, 1.2], [8.9, 0.1, 0.5]]) {
+      this.tone(out, { f0: 260 * ratio, dur: d, gain: g });
+    }
+    this.noiseBurst(out, { f: 3000, q: 2, dur: 0.05, gain: 0.5 });
+  }
+
   creatureClick(pos) {
     const out = this.output(pos, { gain: 1.1, reverb: 0.7 });
     for (let i = 0; i < 3; i++) {

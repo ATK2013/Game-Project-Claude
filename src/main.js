@@ -138,6 +138,9 @@ const mats = {
   forkSurface: pulses.makeMaterial('surface', { tint: PC.forkColor, tintMix: 0.7 }),
   forkLine: pulses.makeMaterial('line', { tint: PC.forkColor, tintMix: 0.7, selfGlow: 0.035, lineBoost: 2 }),
   elevatorLine: pulses.makeMaterial('line', { tint: PC.elevatorColor, tintMix: 0.5 }),
+  // levers: rusty orange, with a very faint glow so you can spot them up close
+  leverSurface: pulses.makeMaterial('surface', { tint: [1, 0.45, 0.2], tintMix: 0.7 }),
+  leverLine: pulses.makeMaterial('line', { tint: [1, 0.45, 0.2], tintMix: 0.7, selfGlow: 0.03, lineBoost: 2 }),
   creatureEye: pulses.makeMaterial('eye'), // its body is pitch black: only the eyes glow
   // jumpscare face: black, a barely-there grey outline, blazing white eyes
   scareLine: pulses.makeMaterial('line', { tint: [0.6, 0.65, 0.7], tintMix: 1, forceLit: 0.07 }),
@@ -266,6 +269,8 @@ function newGame(seed) {
   game.pendingEnd = null;
   game.player = new Player(camera, game.level);
   game.player.onFootstep = onFootstep;
+  game.player.onLand = onLand;
+  game.player.onFall = onFall;
   if (game.net) placeForMultiplayer();
   audio.wallsTo = (pos) => game.level.rockBetween(camera.position, pos);
   game.items = new Items(game);
@@ -278,7 +283,7 @@ function newGame(seed) {
   ui.setFear(0);
   const hint = document.getElementById('hint');
   hint.textContent = MOBILE ? 'Tap CLAP to see. Every clap tells it where you are.'
-    : 'Clap (SPACE) to see. Every clap tells it where you are.';
+    : 'Clap (F or click) to see. Every clap tells it where you are.';
   hint.style.opacity = 1;
   ui.show(null);
   game.state = 'playing';
@@ -322,8 +327,38 @@ function snap() {
 // Called by the player every stride.
 function onFootstep(mode) {
   if (mode === 'creep') { audio.footstep('creep'); return; } // silent: no light, nothing to hear
-  const p = game.player.position;
-  playerFx(mode, new THREE.Vector3(p.x, 0.1, p.z));
+  playerFx(mode, feetPosition());
+}
+
+function feetPosition() {
+  const p = game.player;
+  return new THREE.Vector3(p.position.x, p.y + 0.1, p.position.z);
+}
+
+function jump() {
+  if (game.state === 'spectating') { game.net.nextSpectateTarget(); return; }
+  if (game.state === 'playing') game.player.jump();
+}
+
+// Landed after a jump or a drop: the harder, the louder.
+function onLand(impact) {
+  if (impact < 2) return;
+  playerFx('thud', feetPosition(), Math.min(1, impact / 6));
+  vibrate(20);
+}
+
+// Fell into a crevice: a loud crash, then you climb back out.
+function onFall() {
+  playerFx('fall', feetPosition());
+  ui.flash('rgba(0,0,0,0.85)', 1200);
+  vibrate([60, 40, 120]);
+}
+
+// E / PULL: pull a lever if you're next to one, otherwise throw a pebble.
+function throwOrPull() {
+  if (game.state !== 'playing') return;
+  if (game.items.mech.near >= 0) game.items.mech.tryPull(game.items);
+  else game.items.throwPebble();
 }
 
 // A noise made by a player — you or a friend: a pulse of light in their
@@ -349,6 +384,15 @@ function playerFx(kind, pos, s = 1, who = game.myId) {
     light({ radius: run ? ACT.stepRadiusRun : ACT.stepRadiusWalk, strength: 0.75, fade: 1.2 });
     audio.footstep(kind, at);
     hear(run ? ACT.stepLoudnessRun : ACT.stepLoudnessWalk);
+  } else if (kind === 'thud') {
+    light({ radius: ACT.landRadius * (0.5 + s * 0.5), strength: 0.8, fade: 1.2 });
+    audio.thud(at, s);
+    hear(ACT.landLoudness * (0.5 + s * 0.5));
+  } else if (kind === 'fall') {
+    light({ radius: 8, strength: 1.0, color: PC.objectColor });
+    audio.crash(pos);
+    hear(ACT.fallLoudness);
+    game.caption(mine ? '[you slip into a crevice — CRASH]' : `[${game.nameOf(who)} fell into a crevice — {dir}]`, mine ? null : pos, true);
   } else if (kind === 'land') {
     light({ radius: ACT.pebbleRadius * s, strength: 0.9, color: PC.objectColor });
     audio.pebble(pos, s);
@@ -586,6 +630,10 @@ function checkCaught() {
 
 function updateHud(dt) {
   const t = game.timers;
+  // next to a lever: show "E — PULL LEVER" (mobile: the PEBBLE button says PULL)
+  const nearLever = game.items.mech.near >= 0;
+  ui.setPrompt(nearLever ? (MOBILE ? 'PULL THE LEVER' : 'E — PULL THE LEVER') : '');
+  if (touch) touch.setThrowLabel(nearLever ? 'PULL' : 'PEBBLE');
   ui.setCooldown(Math.min(1, 1 - (t.clapReady - game.time) / t.clapLength));
   game.noise = Math.max(0, game.noise - CONFIG.ui.noiseDecay * dt);
   ui.setNoise(game.noise);
@@ -670,7 +718,8 @@ function setupModeToggle() {
 
 input.on('clap', clap);
 input.on('snap', snap);
-input.on('throw', () => game.state === 'playing' && game.items.throwPebble());
+input.on('throw', throwOrPull);
+input.on('jump', jump);
 input.on('pause', () => {
   if (game.state === 'playing' || game.state === 'spectating') pause();
   // ignore the same Esc press that just released the mouse (some browsers send both)

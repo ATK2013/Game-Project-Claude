@@ -243,12 +243,21 @@ export class Creature {
   }
 
   // Plan a route (BFS on the grid) to a world position.
+  // (Closed gates block it: then it walks right up to the bars and waits.)
   goTo(pos) {
     const goal = this.level.toCell(pos.x, pos.z);
     const path = this.level.findPath(this.cell(), goal);
     if (!path) return;
     this.path = path;
-    this.target = pos.clone();
+    this.goalPos = pos.clone();
+    const end = path.length ? path[path.length - 1] : this.cell();
+    const reaches = end[0] === goal[0] && end[1] === goal[1];
+    this.target = reaches ? pos.clone() : null; // can't reach it: stop at the closest cell
+  }
+
+  // A gate opened or closed: plan the route again.
+  replan() {
+    if (!this.remote && this.goalPos) this.goTo(this.goalPos);
   }
 
   // A random destination; once the elevator runs, it tends to stay near it.
@@ -329,6 +338,7 @@ export class Creature {
   followPath(dt, speed) {
     if (!this.path.length) return 0;
     const [cx, cz] = this.path[0];
+    if (!this.level.isPassable(cx, cz)) { this.path = []; return 0; } // a gate shut in its face
     const last = this.path.length === 1;
     const goal = last && this.target ? this.target : this.level.toWorld(cx, cz);
     const dx = goal.x - this.position.x, dz = goal.z - this.position.z;
