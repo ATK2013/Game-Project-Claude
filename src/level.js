@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from './config.js';
 import { makeEchoObject } from './pulse.js';
+import { placeFeatures, addPitCell, cellKey } from './features.js';
 
 export const ROCK = 1;
 export const OPEN = 0;
@@ -48,6 +49,8 @@ export class Level {
   }
   set(x, z, v) { this.grid[x + z * this.size] = v; }
   isOpen(x, z) { return this.get(x, z) === OPEN; }
+  // Can the creature walk through? (Not rock, and not a closed gate.)
+  isPassable(x, z) { return this.isOpen(x, z) && !this.blocked.has(cellKey(x, z)); }
 
   // Convert between world metres and grid cells.
   toCell(wx, wz) { return [Math.floor(wx / this.cell), Math.floor(wz / this.cell)]; }
@@ -67,10 +70,12 @@ export class Level {
     this.start = [1, 1];
     const dist = this.distancesFrom(this.start);
     this.elevator = this.farthestCell(dist);
-    this.forks = this.placeForks(dist);
-    this.creatureSpawn = this.placeCreature(dist);
-    this.cans = this.scatter(L.tinCans, dist, 3);
-    this.pebblePiles = this.scatter(L.pebblePiles, dist, 1);
+    placeFeatures(this, dist);   // pits, beams, gates, levers, bells (features.js)
+    const used = this.featureCells;
+    this.forks = this.placeForks(dist, used);
+    this.creatureSpawn = this.placeCreature(this.distancesFrom(this.start, true));
+    this.cans = this.scatter(L.tinCans, dist, 3, used);
+    this.pebblePiles = this.scatter(L.pebblePiles, dist, 1, used);
   }
 
   // Classic "recursive backtracker": a random walk that carves tunnels.
@@ -118,7 +123,9 @@ export class Level {
   }
 
   // Breadth-first search: path distance (in cells) from one cell to all others.
-  distancesFrom([sx, sz]) {
+  // gatesBlock = true: closed gates count as walls.
+  distancesFrom([sx, sz], gatesBlock = false) {
+    const ok = (x, z) => (gatesBlock ? this.isPassable(x, z) : this.isOpen(x, z));
     const dist = new Int32Array(this.size * this.size).fill(-1);
     const queue = [[sx, sz]];
     dist[sx + sz * this.size] = 0;
@@ -126,7 +133,7 @@ export class Level {
       const [x, z] = queue[i];
       for (const [dx, dz] of DIRS) {
         const nx = x + dx, nz = z + dz, k = nx + nz * this.size;
-        if (this.isOpen(nx, nz) && dist[k] < 0) {
+        if (ok(nx, nz) && dist[k] < 0) {
           dist[k] = dist[x + z * this.size] + 1;
           queue.push([nx, nz]);
         }
@@ -156,11 +163,11 @@ export class Level {
   }
 
   // Spread the forks out: each new fork is placed far from the others.
-  placeForks(dist) {
+  placeForks(dist, used) {
     const taken = [this.start, this.elevator];
     const minPath = 6;
     let cands = this.openCells().filter(([x, z]) =>
-      dist[x + z * this.size] >= minPath && !(x === this.elevator[0] && z === this.elevator[1]));
+      dist[x + z * this.size] >= minPath && !used.has(cellKey(x, z)));
     const forks = [];
     for (let i = 0; i < CONFIG.goal.forkCount; i++) {
       // score = distance to the nearest already-taken cell (+ bonus for dead ends)
@@ -184,9 +191,9 @@ export class Level {
   }
 
   // Random open cells at least 'minDist' cells (path) from the start.
-  scatter(count, dist, minDist) {
+  scatter(count, dist, minDist, used) {
     const cands = this.openCells().filter(([x, z]) => dist[x + z * this.size] >= minDist &&
-      !(x === this.elevator[0] && z === this.elevator[1]));
+      !used.has(cellKey(x, z)));
     const out = [];
     for (let i = 0; i < count && cands.length; i++) {
       const idx = this.randInt(cands.length);
@@ -198,24 +205,48 @@ export class Level {
   // ------------------------------------------------------------------
   // Path-finding (BFS) — returns a list of [x, z] cells, start excluded
   // ------------------------------------------------------------------
+  // Closed gates block the way. If the goal can't be reached, the path
+  // leads to the reachable cell closest to it (e.g. right up to the gate).
   findPath(from, to) {
     const N = this.size;
     if (!this.isOpen(to[0], to[1])) return null;
     const prev = new Int32Array(N * N).fill(-1);
-    const startK = from[0] + from[1] * N, goalK = to[0] + to[1] * N;
+    const startK = from[0] + from[1] * N;
+    let goalK = to[0] + to[1] * N;
     prev[startK] = startK;
     const queue = [startK];
     for (let i = 0; i < queue.length && prev[goalK] < 0; i++) {
       const k = queue[i], x = k % N, z = Math.floor(k / N);
       for (const [dx, dz] of DIRS) {
         const nk = (x + dx) + (z + dz) * N;
-        if (this.isOpen(x + dx, z + dz) && prev[nk] < 0) { prev[nk] = k; queue.push(nk); }
+        if (this.isPassable(x + dx, z + dz) && prev[nk] < 0) { prev[nk] = k; queue.push(nk); }
       }
     }
-    if (prev[goalK] < 0) return null;
+    if (prev[goalK] < 0) goalK = this.closestTo(queue, to); // can't get there: get close
     const path = [];
     for (let k = goalK; k !== startK; k = prev[k]) path.push([k % N, Math.floor(k / N)]);
     return path.reverse();
+  }
+
+  // Of the cells in 'keys', the one nearest (straight line) to cell 'to'.
+  closestTo(keys, [tx, tz]) {
+    const N = this.size;
+    let best = keys[0], bestD = Infinity;
+    for (const k of keys) {
+      const d = Math.hypot(k % N - tx, Math.floor(k / N) - tz);
+      if (d < bestD) { bestD = d; best = k; }
+    }
+    return best;
+  }
+
+  // Height of the floor at a point: 0 normally, below 0 in a pit,
+  // the top of a fallen beam if you're standing on one.
+  groundAt(x, z) {
+    const f = this.cellFeature.get(cellKey(...this.toCell(x, z)));
+    if (!f || (f.type !== 'pit' && f.type !== 'hurdle')) return 0;
+    const inside = x > f.minX && x < f.maxX && z > f.minZ && z < f.maxZ;
+    if (!inside) return 0;
+    return f.type === 'pit' ? -f.depth : f.top;
   }
 
   // ------------------------------------------------------------------
@@ -242,7 +273,9 @@ export class Level {
   // Collision: push a circle (x/z) out of rock cells and obstacles.
   // Modifies 'pos' in place.
   // ------------------------------------------------------------------
-  collide(pos, radius) {
+  // feetY: how high your feet are. Obstacles with a 'top' (fallen beams)
+  // don't block you once you've jumped above them.
+  collide(pos, radius, feetY = 0) {
     const [cx, cz] = this.toCell(pos.x, pos.z);
     for (let z = cz - 1; z <= cz + 1; z++) {
       for (let x = cx - 1; x <= cx + 1; x++) {
@@ -250,7 +283,10 @@ export class Level {
         pushOutOfBox(pos, radius, x * this.cell, (x + 1) * this.cell, z * this.cell, (z + 1) * this.cell);
       }
     }
-    for (const o of this.obstacles) pushOutOfBox(pos, radius, o.minX, o.maxX, o.minZ, o.maxZ);
+    for (const o of this.obstacles) {
+      if (o.top !== undefined && feetY >= o.top - 0.05) continue;
+      pushOutOfBox(pos, radius, o.minX, o.maxX, o.minZ, o.maxZ);
+    }
   }
 
   // A data texture with one pixel per cell: white = rock. Read by the shader.
@@ -298,12 +334,23 @@ export class Level {
     };
     for (const [x, z] of this.openCells()) {
       const x0 = x * C, x1 = x0 + C, z0 = z * C, z1 = z0 + C;
-      quad([[x0, 0, z0], [x0, 0, z1], [x1, 0, z1], [x1, 0, z0]], [0, 1, 0]);
-      quad([[x0, H, z0], [x1, H, z0], [x1, H, z1], [x0, H, z1]], [0, -1, 0]);
-      if (!this.isOpen(x - 1, z)) quad([[x0, 0, z0], [x0, H, z0], [x0, H, z1], [x0, 0, z1]], [1, 0, 0]);
-      if (!this.isOpen(x + 1, z)) quad([[x1, 0, z0], [x1, 0, z1], [x1, H, z1], [x1, H, z0]], [-1, 0, 0]);
-      if (!this.isOpen(x, z - 1)) quad([[x0, 0, z0], [x1, 0, z0], [x1, H, z0], [x0, H, z0]], [0, 0, 1]);
-      if (!this.isOpen(x, z + 1)) quad([[x0, 0, z1], [x0, H, z1], [x1, H, z1], [x1, 0, z1]], [0, 0, -1]);
+      // helpers: a floor rectangle, and wall pieces (over part of the cell / part of the height)
+      const q = {
+        quad,
+        floor: (xa, xb, za, zb, y) => quad([[xa, y, za], [xa, y, zb], [xb, y, zb], [xb, y, za]], [0, 1, 0]),
+        wallXmin: (za, zb, ya, yb) => quad([[x0, ya, za], [x0, yb, za], [x0, yb, zb], [x0, ya, zb]], [1, 0, 0]),
+        wallXmax: (za, zb, ya, yb) => quad([[x1, ya, za], [x1, ya, zb], [x1, yb, zb], [x1, yb, za]], [-1, 0, 0]),
+        wallZmin: (xa, xb, ya, yb) => quad([[xa, ya, z0], [xb, ya, z0], [xb, yb, z0], [xa, yb, z0]], [0, 0, 1]),
+        wallZmax: (xa, xb, ya, yb) => quad([[xa, ya, z1], [xa, yb, z1], [xb, yb, z1], [xb, ya, z1]], [0, 0, -1]),
+      };
+      quad([[x0, H, z0], [x1, H, z0], [x1, H, z1], [x0, H, z1]], [0, -1, 0]); // ceiling
+      const f = this.cellFeature.get(cellKey(x, z));
+      if (f && f.type === 'pit') { addPitCell(q, f, x0, x1, z0, z1, H); continue; }
+      q.floor(x0, x1, z0, z1, 0);
+      if (!this.isOpen(x - 1, z)) q.wallXmin(z0, z1, 0, H);
+      if (!this.isOpen(x + 1, z)) q.wallXmax(z0, z1, 0, H);
+      if (!this.isOpen(x, z - 1)) q.wallZmin(x0, x1, 0, H);
+      if (!this.isOpen(x, z + 1)) q.wallZmax(x0, x1, 0, H);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -315,8 +362,10 @@ export class Level {
   buildPropGeometry() {
     const parts = [];
     const special = [this.start, this.elevator, ...this.forks].map(([x, z]) => `${x},${z}`);
+    for (const h of this.hurdles) this.addFallenBeam(parts, h);
+    for (const p of this.pits) this.addBrokenBridge(parts, p);
     for (const [x, z] of this.openCells()) {
-      if (special.includes(`${x},${z}`)) continue;
+      if (special.includes(`${x},${z}`) || this.featureCells.has(cellKey(x, z))) continue;
       const wallsX = !this.isOpen(x - 1, z) && !this.isOpen(x + 1, z);
       const wallsZ = !this.isOpen(x, z - 1) && !this.isOpen(x, z + 1);
       if ((wallsX !== wallsZ) && this.rng() < L.supportChance) this.addSupport(parts, x, z, wallsX);
@@ -331,6 +380,39 @@ export class Level {
     g.applyMatrix4(new THREE.Matrix4().makeRotationY(rotY).setPosition(x, y, z));
     parts.push(g);
     if (solid) this.obstacles.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  }
+
+  // A fallen beam lying across the tunnel, plus some broken rock beside it.
+  addFallenBeam(parts, h) {
+    const C = this.cell, top = h.top;
+    const cx = (h.minX + h.maxX) / 2, cz = (h.minZ + h.maxZ) / 2;
+    if (h.axis === 'x') this.box(parts, 0.4, top, C + 0.3, cx, top / 2, cz, 0.04);
+    else this.box(parts, C + 0.3, top, 0.4, cx, top / 2, cz, 0.04);
+    for (let i = 0; i < 3; i++) {
+      const s = 0.15 + this.rng() * 0.15;
+      const off = (this.rng() - 0.5) * (C - 0.6);
+      const side = (this.rng() < 0.5 ? -1 : 1) * (0.35 + s / 2);
+      if (h.axis === 'x') this.box(parts, s, s, s, cx + side, s / 2, cz + off, this.rng());
+      else this.box(parts, s, s, s, cx + off, s / 2, cz + side, this.rng());
+    }
+  }
+
+  // Stubs of a broken plank bridge sticking out over both edges of a pit,
+  // so it reads as "there used to be a bridge here: jump!"
+  addBrokenBridge(parts, pit) {
+    const C = this.cell;
+    const mid = pit.axis === 'x' ? (pit.minZ + pit.maxZ) / 2 : (pit.minX + pit.maxX) / 2;
+    for (const [edge, dir] of [[pit.a, 1], [pit.b, -1]]) {
+      for (let i = -1; i <= 1; i++) {
+        if (this.rng() < 0.25) continue; // some planks are missing
+        const len = 0.5 + this.rng() * 0.4, over = 0.12 + this.rng() * 0.3;
+        const along = edge + dir * (over - len / 2);       // sticks out 'over' metres past the edge
+        const side = mid + i * (C / 3.4) + (this.rng() - 0.5) * 0.1;
+        const tilt = (this.rng() - 0.5) * 0.15;
+        if (pit.axis === 'x') this.box(parts, len, 0.06, 0.24, along, 0.03, side, tilt);
+        else this.box(parts, 0.24, 0.06, len, side, 0.03, along, tilt);
+      }
+    }
   }
 
   // Two posts against the walls plus a beam across the ceiling.
@@ -369,7 +451,7 @@ export class Level {
         const r = this.rng();
         let p, n;
         const u = (x + this.rng()) * C, v = (z + this.rng()) * C;
-        if (r < 0.6) { p = [u, 0.02, v]; n = [0, 1, 0]; }
+        if (r < 0.6) { p = [u, this.groundAt(u, v) + 0.02, v]; n = [0, 1, 0]; }
         else if (r < 0.75) { p = [u, H - 0.02, v]; n = [0, -1, 0]; }
         else { [p, n] = this.wallDot(x, z, this.rng() * H); }
         if (!p) continue;

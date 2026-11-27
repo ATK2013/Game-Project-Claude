@@ -174,10 +174,10 @@ export class Multiplayer {
     if (this.isHost) this.checkCatches();
   }
 
-  // [x, z, yaw, pitch, creeping?]
+  // [x, z, yaw, pitch, creeping?, feet height]
   myState() {
     const p = this.game.player;
-    return [round(p.position.x), round(p.position.z), round(p.yaw), round(p.pitch), p.mode === 'creep' ? 1 : 0];
+    return [round(p.position.x), round(p.position.z), round(p.yaw), round(p.pitch), p.mode === 'creep' ? 1 : 0, round(p.y)];
   }
 
   // Host: everyone's position + the creature, sent to all friends.
@@ -202,7 +202,7 @@ export class Multiplayer {
   setTarget(r, s) {
     if (!r || !s) return;
     r.state = s;
-    r.target.set(s[0], 0, s[1]);
+    r.target.set(s[0], s[5] || 0, s[1]);
     r.yaw = s[2];
     r.pitch = s[3];
     r.creep = !!s[4];
@@ -329,7 +329,8 @@ export class Multiplayer {
     if (!alive.length) return null;
     const r = alive[this.spectateIndex % alive.length];
     const p = this.game.player;
-    p.position.set(r.pos.x, 0, r.pos.z);
+    p.position.set(r.pos.x, r.pos.y, r.pos.z);
+    p.y = r.pos.y;
     p.yaw += ((r.yaw - p.yaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) * 0.3; // smooth turning
     p.pitch = r.pitch;
     p.mode = r.creep ? 'creep' : 'walk';

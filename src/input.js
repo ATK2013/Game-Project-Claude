@@ -2,16 +2,16 @@
 //  ECHO — input.js
 //  Keyboard, mouse and pointer-lock handling.
 //  Other code asks "is this key down?" or listens for named actions
-//  like 'clap', 'snap', 'throw' and 'pause'.
+//  like 'clap', 'snap', 'throw', 'jump' and 'pause'.
 // =====================================================================
 
-// Which key triggers which one-shot action.
-const KEY_ACTIONS = {
-  Space: 'clap',
-  KeyQ: 'snap',
-  KeyE: 'throw',
-  Escape: 'pause',
-};
+import { CONFIG } from './config.js';
+
+// Which key triggers which one-shot action (set in CONFIG.keys).
+const KEY_ACTIONS = {};
+for (const [action, codes] of Object.entries(CONFIG.keys)) {
+  for (const code of codes) KEY_ACTIONS[code] = action;
+}
 
 export class Input {
   constructor(canvas) {

@@ -26,7 +26,8 @@ ECHO detects phones and tablets and switches to **mobile mode** automatically:
 | --- | --- |
 | Left thumb (joystick) | move: a small push creeps (silent), a normal push walks, pushing to the edge runs (loud) |
 | Right thumb | drag to look around |
-| CLAP / SNAP / PEBBLE | the same as Space / Q / E on a keyboard |
+| CLAP / SNAP / JUMP | the same as F / Q / Space on a keyboard |
+| PEBBLE (says PULL next to a lever) | the same as E |
 | II | pause |
 
 - Hold the device sideways. The game goes fullscreen and locks to landscape where the browser allows it.
@@ -78,14 +79,31 @@ Rooms then connect the tabs to each other, with no internet needed.
 | Mouse | look around (click to capture the mouse) |
 | Shift | run: faster, but louder |
 | C | creep: slow and silent |
-| Space / left click | **clap**: big pulse (~18 m), loud, 1.2 s cooldown |
+| F / left click | **clap**: big pulse (~18 m), loud, 1.2 s cooldown |
 | Q / right click | **snap**: small quiet pulse (~5 m) |
-| E | throw a pebble (makes noise where it lands, as a distraction) |
+| Space | **jump** over crevices and fallen beams |
+| E | pull a lever when you stand next to one, otherwise throw a pebble (a distraction) |
 | Esc | pause |
-| Space (after being caught) | watch a different friend (multiplayer) |
+| Space or F (after being caught) | watch a different friend (multiplayer) |
 
 **Goal:** find the 4 humming tuning forks (follow their gold ripples and hum),
 then reach the old elevator at the far end of the mine.
+
+All keys can be changed in the `keys` section of `src/config.js`.
+
+### Things in the mine
+- **Crevices:** gaps across a tunnel, marked by the stubs of a broken plank bridge. Jump over
+  them. Miss, and you fall in with a loud crash that the creature hears, then climb back out.
+- **Fallen beams:** knee-high beams across a tunnel. Jump over them (or onto them).
+- **Iron gates and gate levers:** gates block some tunnels, and the creature can't get through
+  a closed gate either. Each gate's lever (rusty orange, glowing faintly) is always somewhere
+  you can reach. Pull it again to close the gate, maybe in the creature's face.
+- **Bell levers:** ring an old mine bell far away. It's very loud, so the creature goes to look.
+  Use it to lure the creature away. It needs 25 seconds before it works again.
+
+The Listener's legs are long enough to step over crevices and beams. How many of each thing
+appears, how wide crevices are, and how high you jump are all in `src/config.js`
+(`features` and `player`).
 
 ## Files
 
@@ -105,6 +123,8 @@ then reach the old elevator at the far end of the mine.
 | `src/lobby.js` | the "Play with friends" menu and the waiting room |
 | `src/multiplayer.js` | keeps everyone's game in sync during a match |
 | `src/touch.js` | mobile mode: phone detection and touch controls |
+| `src/features.js` | places crevices, fallen beams, gates, levers and bells in each map |
+| `src/mechanisms.js` | levers, gates and bells: pulling, opening, ringing |
 | `src/audio.js` | all sounds, synthesised with the Web Audio API |
 | `src/ui.js` | HUD, captions and screens |
 

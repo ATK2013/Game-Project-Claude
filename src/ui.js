@@ -103,6 +103,13 @@ export class UI {
     $(`${screen}Team`).innerHTML = line('Escaped', result.escaped) + line('Caught', result.caught);
   }
 
+  // A short hint at the bottom of the screen (e.g. "E — PULL THE LEVER"). '' hides it.
+  setPrompt(text) {
+    const el = $('prompt');
+    if (el.textContent !== text) el.textContent = text;
+    el.classList.toggle('hidden', !text);
+  }
+
   // Hide or show the in-game HUD and captions.
   setHud(on) {
     $('hud').classList.toggle('hidden', !on);

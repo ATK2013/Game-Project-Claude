@@ -52,6 +52,8 @@ export const CONFIG = {
     strideRun: 2.0,        // metres between footsteps when running
     strideCreep: 1.0,      // metres between (silent) footsteps when creeping
     headBob: 0.035,        // how much the camera bobs while walking
+    jumpSpeed: 4.6,        // how hard you jump (higher = higher and longer jumps)
+    gravity: 12,           // how fast you fall back down
     startPebbles: 3,       // pebbles you start with
     maxPebbles: 8,         // most pebbles you can carry
   },
@@ -77,6 +79,41 @@ export const CONFIG = {
     pebbleLoudness: 18,    // how far the creature hears a pebble land
     canRadius: 7,          // pulse size when you kick a tin can
     canLoudness: 22,       // how far the creature hears a tin can
+    landRadius: 2.4,       // pulse size when you land from a jump
+    landLoudness: 9,       // how far the creature hears you land
+    fallLoudness: 26,      // how far the creature hears you crash into a crevice
+    leverLoudness: 8,      // how far the creature hears a lever clunk
+    gateLoudness: 24,      // how far the creature hears a gate grinding
+    bellLoudness: 45,      // how far the creature hears a bell (a big distraction)
+  },
+
+  // ---------------------------------------------------------------
+  // Keyboard keys for each action (names from KeyboardEvent.code).
+  // Example: to clap with Space again, use clap: ['Space'] and jump: ['KeyJ'].
+  // ---------------------------------------------------------------
+  keys: {
+    jump: ['Space'],       // jump
+    clap: ['KeyF'],        // clap (left mouse button also claps)
+    snap: ['KeyQ'],        // snap (right mouse button also snaps)
+    throw: ['KeyE'],       // throw a pebble, or pull a lever when you stand next to one
+    pause: ['Escape'],     // pause
+  },
+
+  // ---------------------------------------------------------------
+  // Map features: things to jump over and levers to pull
+  // ---------------------------------------------------------------
+  features: {
+    pits: 3,               // crevices across tunnels that you must jump over
+    pitWidth: [1.3, 1.8],  // min/max width in metres (a walking jump clears about 2 m)
+    pitDepth: 3,           // how deep they are
+    fallTime: 1.4,         // seconds before you climb back out after falling in
+    hurdles: 3,            // fallen beams you must jump over (or climb onto)
+    hurdleHeight: 0.55,    // beam height (a jump goes about 0.9 m high)
+    gates: 2,              // iron gates opened by levers (the creature can't pass a closed gate)
+    decoyLevers: 2,        // levers that ring a far-away bell: a loud distraction
+    decoyCooldown: 25,     // seconds before a bell lever can be pulled again
+    leverReach: 1.5,       // how close you must be to pull a lever
+    gateSpeed: 1.2,        // how fast gates rise and fall (metres per second)
   },
 
   // ---------------------------------------------------------------

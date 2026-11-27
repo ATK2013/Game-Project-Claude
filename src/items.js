@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { makeEchoObject } from './pulse.js';
 import { makeRng } from './level.js';
+import { Mechanisms } from './mechanisms.js';
 
 const G = CONFIG.goal;
 const ACT = CONFIG.actions;
@@ -30,6 +31,7 @@ export class Items {
     this.muffleTimer = 0;
     this.powerTimer = -1; // counts down to the elevator powering up (-1 = not yet)
     this.makeElevator();
+    this.mech = new Mechanisms(game); // levers, gates and bells
   }
 
   // Helper: an echo object added to the world.
@@ -61,6 +63,7 @@ export class Items {
     if (kind === 'fork') return !this.forks[i].taken;
     if (kind === 'pile') return !this.piles[i].taken;
     if (kind === 'can') return this.cans[i].cooldown <= 0;
+    if (kind === 'lever') return this.mech.canClaim(i);
     return false;
   }
 
@@ -69,6 +72,7 @@ export class Items {
     if (kind === 'fork') this.takeFork(this.forks[i], by);
     else if (kind === 'pile') this.takePile(this.piles[i], by);
     else if (kind === 'can') this.kickCan(this.cans[i], data.v, data.creep, by);
+    else if (kind === 'lever') this.mech.pull(i, by);
   }
 
   // ------------------------------------------------------------------
@@ -155,6 +159,7 @@ export class Items {
       if (c.vel.lengthSq() > 0.001) {
         c.pos.addScaledVector(c.vel, dt);
         this.level.collide(c.pos, 0.08);
+        c.pos.y = this.level.groundAt(c.pos.x, c.pos.z) + 0.07; // drops in if it slides into a pit
         c.vel.multiplyScalar(Math.max(0, 1 - dt * 2.5));
         c.mesh.rotation.z += c.vel.length() * dt * 6;
         c.mesh.position.copy(c.pos);
@@ -246,7 +251,7 @@ export class Items {
       p.pos.addScaledVector(p.vel, dt);
       this.bounceOffWalls(p, prev);
       if (p.pos.y > this.level.height - 0.05) { p.pos.y = this.level.height - 0.05; p.vel.y *= -0.4; }
-      if (p.pos.y < 0.05) this.hitFloor(p);
+      if (p.pos.y < this.level.groundAt(p.pos.x, p.pos.z) + 0.05) this.hitFloor(p);
       p.mesh.position.copy(p.pos);
     }
   }
@@ -263,7 +268,7 @@ export class Items {
   }
 
   hitFloor(p) {
-    p.pos.y = 0.05;
+    p.pos.y = this.level.groundAt(p.pos.x, p.pos.z) + 0.05;
     if (Math.abs(p.vel.y) < 1.2 || p.bounces > 3) { p.resting = true; return; }
     this.landNoise(p, p.bounces === 0 ? 1 : 0.4);
     p.vel.y *= -0.35;
@@ -334,6 +339,7 @@ export class Items {
     this.updatePiles();
     this.updateThrown(dt);
     this.updateElevator(dt);
+    this.mech.update(dt);
     if ((this.muffleTimer -= dt) <= 0) {
       this.muffleTimer = 0.25;
       this.forks.forEach((f) => !f.taken && f.hum.updateMuffle());
