@@ -9,8 +9,11 @@ import { CONFIG } from './config.js';
 const A = CONFIG.audio;
 
 export class AudioEngine {
-  constructor() {
+  // light = true on phones/tablets: cheaper 3D sound that doesn't crackle
+  constructor({ light = false } = {}) {
+    this.light = light;
     this.ctx = null;           // created on the first click (browser rule)
+    this.voiceEnds = [];       // when each recently started sound finishes (for the limit)
     this.wallsTo = () => 0;    // set by main.js: rock cells between listener and a point
   }
 
@@ -19,14 +22,22 @@ export class AudioEngine {
   // ------------------------------------------------------------------
   init() {
     if (this.ctx) return;
-    const ctx = (this.ctx = new (window.AudioContext || window.webkitAudioContext)());
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    let ctx;
+    try {
+      // 'playback' = bigger sound buffers: a little more delay, but no crackling
+      ctx = new Ctx({ latencyHint: this.light ? 'playback' : 'interactive' });
+    } catch (e) {
+      ctx = new Ctx();
+    }
+    this.ctx = ctx;
     this.master = ctx.createGain();
     this.master.gain.value = A.masterVolume;
     const comp = ctx.createDynamicsCompressor();
     this.master.connect(comp).connect(ctx.destination);
     // cave reverb: a convolver with a generated "impulse response"
     this.reverb = ctx.createConvolver();
-    this.reverb.buffer = this.makeImpulse(A.reverbSeconds, 2.6);
+    this.reverb.buffer = this.makeImpulse(this.light ? Math.min(1.8, A.reverbSeconds) : A.reverbSeconds, 2.6);
     this.reverbIn = ctx.createGain();
     this.reverbIn.gain.value = A.reverbWet;
     this.reverbIn.connect(this.reverb).connect(this.master);
@@ -34,7 +45,8 @@ export class AudioEngine {
     this.distortCurve = this.makeDistortion(60);
   }
 
-  resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+  // ('interrupted' is what iPhones/iPads say after a call or switching apps)
+  resume() { if (this.ctx && this.ctx.state !== 'running' && this.ctx.state !== 'closed') this.ctx.resume(); }
   suspend() { if (this.ctx && this.ctx.state === 'running') this.ctx.suspend(); }
   get now() { return this.ctx.currentTime; }
 
@@ -92,6 +104,9 @@ export class AudioEngine {
   // Returns the node you should connect your sound into.
   output(pos, { gain = 1, reverb = 0.5 } = {}) {
     const ctx = this.ctx;
+    // world sounds can be skipped when too many play at once; your own
+    // sounds and the jumpscare (no position) always play
+    if (pos && this.tooManySounds()) return ctx.createGain(); // not connected = silent
     const g = ctx.createGain();
     g.gain.value = gain;
     let last = g;
@@ -111,9 +126,21 @@ export class AudioEngine {
     return g;
   }
 
+  // Too many sounds at once overloads small devices (crackling, clicking).
+  tooManySounds() {
+    const now = this.now;
+    this.voiceEnds = this.voiceEnds.filter((t) => t > now);
+    const max = this.light ? CONFIG.mobile.maxSounds : 64;
+    if (this.voiceEnds.length >= max) return true;
+    this.voiceEnds.push(now + 1.2); // most one-shot sounds are over within ~1 s
+    return false;
+  }
+
   makePanner(pos) {
     const p = this.ctx.createPanner();
-    p.panningModel = 'HRTF';
+    // HRTF = realistic 3D sound for headphones, but heavy. Phones use the
+    // simpler 'equalpower' (still left/right) so the sound never breaks up.
+    p.panningModel = this.light ? 'equalpower' : 'HRTF';
     p.distanceModel = 'inverse';
     p.refDistance = 1.5;
     p.maxDistance = 100;

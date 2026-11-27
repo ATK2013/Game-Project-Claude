@@ -124,7 +124,7 @@ window.addEventListener('resize', () => {
 // Shared systems and materials
 // ---------------------------------------------------------------------
 const pulses = new PulseSystem();
-const audio = new AudioEngine();
+const audio = new AudioEngine({ light: MOBILE && CONFIG.mobile.lightAudio });
 const ui = new UI();
 const input = new Input(renderer.domElement);
 input.mobile = MOBILE;
@@ -678,7 +678,10 @@ input.on('pause', () => {
 });
 input.on('lockchange', (locked) => { if (!locked) pause(); });
 // switching apps / tabs (or locking the phone) pauses the game
-document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) pause();
+  else if (game.state !== 'paused') audio.resume(); // iPads stop the sound after switching apps
+});
 input.on('canvasclick', () => { if (game.state === 'playing' || game.state === 'spectating') input.requestLock(); });
 
 wireButtons();

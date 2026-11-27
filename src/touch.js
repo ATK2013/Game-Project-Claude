@@ -64,6 +64,15 @@ export class TouchControls {
     zone.addEventListener('touchmove', (e) => this.onMove(e), opts);
     zone.addEventListener('touchend', (e) => this.onEnd(e), opts);
     zone.addEventListener('touchcancel', (e) => this.onEnd(e), opts);
+    // A lifted finger is reported to the element it started on, but iPads can
+    // also lose a finger to a system swipe without saying so. Listen everywhere,
+    // and let go of everything when the page loses focus.
+    window.addEventListener('touchend', (e) => this.reconcile(e));
+    window.addEventListener('touchcancel', (e) => this.reconcile(e));
+    window.addEventListener('blur', () => this.releaseAll());
+    window.addEventListener('pagehide', () => this.releaseAll());
+    window.addEventListener('orientationchange', () => this.releaseAll());
+    document.addEventListener('visibilitychange', () => this.releaseAll());
     this.button('tClap', 'clap');
     this.button('tSnap', 'snap');
     this.button('tThrow', 'throw');
@@ -83,8 +92,18 @@ export class TouchControls {
     $(id).addEventListener('touchcancel', up);
   }
 
+  // Every touch event lists ALL fingers that are still on the screen.
+  // If we think a finger is on the joystick (or looking) but it isn't in
+  // that list, it was lifted without us being told: let go of it.
+  reconcile(e) {
+    const down = new Set(Array.from(e.touches, (t) => t.identifier));
+    if (this.stickId !== null && !down.has(this.stickId)) this.endStick();
+    if (this.lookId !== null && !down.has(this.lookId)) this.lookId = null;
+  }
+
   onStart(e) {
     e.preventDefault();
+    this.reconcile(e);
     for (const t of e.changedTouches) {
       const leftSide = t.clientX < window.innerWidth * 0.45;
       if (leftSide && this.stickId === null && this.mode === 'play') this.startStick(t);
@@ -94,6 +113,7 @@ export class TouchControls {
 
   onMove(e) {
     e.preventDefault();
+    this.reconcile(e);
     for (const t of e.changedTouches) {
       if (t.identifier === this.stickId) this.moveStick(t);
       else if (t.identifier === this.lookId) this.moveLook(t);
@@ -101,10 +121,12 @@ export class TouchControls {
   }
 
   onEnd(e) {
+    e.preventDefault(); // stops the iPad turning the tap into a mouse click
     for (const t of e.changedTouches) {
       if (t.identifier === this.stickId) this.endStick();
       else if (t.identifier === this.lookId) this.lookId = null;
     }
+    this.reconcile(e);
   }
 
   // ---------------- joystick (left thumb) ----------------

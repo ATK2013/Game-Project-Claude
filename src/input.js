@@ -84,6 +84,9 @@ export class Input {
   }
 
   onMouseDown(e) {
+    // Touch screens turn taps into fake mouse clicks: ignore those, and only
+    // clap with a real mouse while it is captured.
+    if (this.mobile || (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents)) return;
     if (!this.locked) {
       this.fire('canvasclick');
       return;
