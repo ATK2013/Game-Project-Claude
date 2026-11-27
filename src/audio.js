@@ -386,50 +386,69 @@ export class AudioEngine {
 
   // A deep sub-bass hit you feel in your chest.
   boom() {
-    const out = this.scareOut(1.0, 0.6);
+    const out = this.scareOut(1.3, 0.6);
     this.tone(out, { f0: 75, f1: 24, dur: 1.4, gain: 1, attack: 0.005 });
     this.noiseBurst(out, { type: 'lowpass', f: 160, dur: 0.8, gain: 1 });
   }
 
-  // One bite: teeth clacking together, a bone-deep crunch and a heavy thud.
-  chomp(strength = 1) {
-    const out = this.scareOut(strength, 0.5);
-    const t = this.now;
-    for (let i = 0; i < 4; i++) {
-      const ti = t + i * 0.014 + Math.random() * 0.006;
-      this.noiseBurst(out, { t: ti, f: 1400 + Math.random() * 1600, q: 2.5, dur: 0.035, gain: 1.1 }); // crunch
-    }
-    this.tone(out, { type: 'square', f0: 3400, f1: 2200, dur: 0.018, gain: 0.35 });  // clack
-    this.tone(out, { f0: 130, f1: 38, dur: 0.22, gain: 1.2 });                        // thud
-    this.noiseBurst(out, { type: 'lowpass', f: 380, dur: 0.16, gain: 0.9 });
-  }
-
-  // A distorted, throbbing growl under the chomping.
-  growl(dur) {
+  // The scream for the shaking face: several distorted, wobbling voices,
+  // chopped up ~20 times a second so it rattles along with the shaking.
+  violentScream(dur) {
     const ctx = this.ctx, t = this.now;
-    const out = this.scareOut(0.55, 0.4);
+    const out = this.scareOut(1.3, 0.7);
+    // the "chopper": a gain that a square wave flips up and down very fast
+    const chop = ctx.createGain();
+    chop.gain.value = 0.6;
+    const lfo = ctx.createOscillator(), lfoAmount = ctx.createGain();
+    lfo.type = 'square';
+    lfo.frequency.setValueAtTime(17, t);
+    lfo.frequency.linearRampToValueAtTime(29, t + dur);  // speeding up
+    lfoAmount.gain.value = 0.45;
+    lfo.connect(lfoAmount).connect(chop.gain);
+    // loud for the whole time, then a hard cut
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.linearRampToValueAtTime(1, t + 0.02);
+    env.gain.setValueAtTime(1, t + dur - 0.06);
+    env.gain.linearRampToValueAtTime(0.0001, t + dur);
     const shaper = ctx.createWaveShaper();
-    shaper.curve = this.distortCurve;
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = 1100;
-    const g = this.envelope(t, 0.08, 1, dur);
-    const trem = ctx.createOscillator(), tremGain = ctx.createGain();
-    trem.frequency.value = 17; tremGain.gain.value = 0.45;   // fast throb
-    trem.connect(tremGain).connect(g.gain);
-    shaper.connect(lp).connect(g).connect(out);
-    const oscs = [68, 71.5, 136].map((f) => {
-      const o = ctx.createOscillator();
-      o.type = 'sawtooth';
-      o.frequency.setValueAtTime(f, t);
-      o.frequency.linearRampToValueAtTime(f * 1.35, t + dur);  // rising in fury
-      o.connect(shaper); o.start(t); o.stop(t + dur + 0.1);
-      return o;
-    });
-    trem.start(t); trem.stop(t + dur + 0.1);
-    return oscs;
+    shaper.curve = this.heavyCurve || (this.heavyCurve = this.makeDistortion(160));
+    shaper.connect(env).connect(chop).connect(out);
+    const voices = [[430, 1900, 'sawtooth'], [640, 2700, 'sawtooth'], [190, 720, 'sawtooth'], [92, 150, 'square']];
+    const nodes = voices.map(([f0, f1, type]) => this.screamVoice(shaper, t, dur, f0, f1, type));
+    this.noiseBurst(chop, { t, type: 'highpass', f: 1800, dur, gain: 0.5, attack: 0.01 });
+    lfo.start(t);
+    for (const n of [lfo, ...nodes.flat()]) n.stop(t + dur + 0.1);
   }
 
-  // The high ringing in your ears after the final bite.
+  // One voice of the scream: a pitch that shoots up then sags, with a fast wobble.
+  screamVoice(dest, t, dur, f0, f1, type) {
+    const ctx = this.ctx;
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f0, t);
+    osc.frequency.exponentialRampToValueAtTime(f1, t + 0.35);
+    osc.frequency.exponentialRampToValueAtTime(f1 * 0.7, t + dur);
+    const wobble = ctx.createOscillator(), depth = ctx.createGain();
+    wobble.frequency.value = 33 + Math.random() * 12;
+    depth.gain.value = f1 * 0.14;
+    wobble.connect(depth).connect(osc.frequency);
+    const g = ctx.createGain();
+    g.gain.value = 0.5;
+    osc.connect(g).connect(dest);
+    osc.start(t);
+    wobble.start(t);
+    return [osc, wobble];
+  }
+
+  // Turn the overall volume up for the jumpscare (and back down after).
+  scareBoost(on) {
+    if (!this.master) return;
+    const v = on ? Math.min(1, A.masterVolume * 1.3) : A.masterVolume;
+    this.master.gain.setTargetAtTime(v, this.now, 0.05);
+  }
+
+  // The high ringing in your ears after everything goes black.
   tinnitus() {
     const out = this.scareOut(0.09, 0.2);
     this.tone(out, { f0: 4100, dur: 3.5, gain: 1, attack: 0.25 });
@@ -438,10 +457,11 @@ export class AudioEngine {
 
   // The jumpscare shriek, right in your face.
   shriek() {
-    const out = this.scareOut(1.0, 0.8);
+    const out = this.scareOut(1.3, 0.8);
     this.screech(out, 1.4, 350, 1700);
     this.screech(out, 1.2, 520, 2300);
-    this.tone(out, { f0: 120, f1: 40, dur: 1.0, gain: 0.8, type: 'square' });
+    this.screech(out, 1.0, 260, 1100);
+    this.tone(out, { f0: 120, f1: 40, dur: 1.0, gain: 0.9, type: 'square' });
   }
 
   forkRing(pos, freq) {

@@ -118,7 +118,7 @@ appears, how wide crevices are, and how high you jump are all in `src/config.js`
 | `src/input.js` | keyboard, mouse and pointer lock |
 | `src/creature.js` | the Listener: body, hearing and AI |
 | `src/items.js` | tuning forks, tin cans, pebbles, elevator |
-| `src/jumpscare.js` | the jumpscare: stare, lunge and the chomping grey jaws |
+| `src/jumpscare.js` | the jumpscare: a silent stare, a lunge, then the face shaking violently across the screen |
 | `src/net.js` | multiplayer rooms and connections (PeerJS, or browser tabs with `?net=local`) |
 | `src/lobby.js` | the "Play with friends" menu and the waiting room |
 | `src/multiplayer.js` | keeps everyone's game in sync during a match |

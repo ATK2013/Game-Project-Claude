@@ -145,6 +145,9 @@ const mats = {
   // jumpscare face: black, a barely-there grey outline, blazing white eyes
   scareLine: pulses.makeMaterial('line', { tint: [0.6, 0.65, 0.7], tintMix: 1, forceLit: 0.07 }),
   scareEye: pulses.makeMaterial('eye', { forceLit: 1.0, eyeSize: 75 }),
+  // after-images trailing behind the shaking face: dimmer lines and eyes
+  scareGhostLine: pulses.makeMaterial('line', { tint: [0.6, 0.65, 0.7], tintMix: 1, forceLit: 0.035 }),
+  scareGhostEye: pulses.makeMaterial('eye', { forceLit: 0.4, eyeSize: 75 }),
 };
 const VOID = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide }); // pitch black
 const jumpscare = new Jumpscare({ camera, renderer, scene, audio, ui, fx, mats, voidMat: VOID });
