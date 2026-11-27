@@ -2,7 +2,7 @@
 //  ECHO — main.js
 //  Sets up Three.js, wires all the modules together and runs the game
 //  loop. Game states: 'title' → 'playing' ⇄ 'paused' → 'jumpscare' →
-//  'dead', or → 'won'.
+//  'dead', or → 'won'. Multiplayer adds 'lobby' and 'spectating'.
 // =====================================================================
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -20,6 +20,8 @@ import { Items } from './items.js';
 import { AudioEngine } from './audio.js';
 import { UI, describeDirection } from './ui.js';
 import { Input } from './input.js';
+import { Lobby } from './lobby.js';
+import { Multiplayer, spawnOffset } from './multiplayer.js';
 
 const ACT = CONFIG.actions;
 const PC = CONFIG.pulse;
@@ -146,11 +148,36 @@ const game = {
   elevatorPowered: false,
   noise: 0,
   timers: {},
+  net: null,          // multiplayer session (null when playing alone)
+  localOut: false,    // multiplayer: you were caught or escaped and are now watching
+
+  get myId() { return this.net ? this.net.myId : 'me'; },
+  get myColor() { return this.net ? this.net.colorOf(this.myId) : PC.playerColor; },
+  nameOf(id) { return this.net ? this.net.nameOf(id) : 'You'; },
 
   // A sound happened somewhere: the creature may hear it.
+  // Only the "thinking" creature listens (alone, or on the multiplayer host).
   emitSound(ev) {
-    if (ev.fromPlayer) this.noise = Math.max(this.noise, Math.min(1, ev.loudness / 30));
-    if (this.creature && this.state === 'playing') this.creature.hear(ev);
+    if (ev.fromPlayer && ev.mine) this.noise = Math.max(this.noise, Math.min(1, ev.loudness / 30));
+    if (!this.creature) return;
+    const thinking = this.net ? this.net.isHost && this.net.inGame : this.state === 'playing';
+    if (thinking) this.creature.hear(ev);
+  },
+
+  playerFx(kind, pos, s, who) { playerFx(kind, pos, s, who); },
+
+  // Ask to pick something up (see Items.tryClaim).
+  claim(kind, i, extra) {
+    if (this.net) this.net.claim(kind, i, extra);
+    else if (this.items.canClaim(kind, i)) this.items.applyClaim(kind, i, this.myId, extra);
+  },
+
+  // You walked into the running elevator.
+  reachedElevator() {
+    if (!this.net) return winGame();
+    if (this.time < (this.timers.escapeAsk || 0)) return; // already asked the host
+    this.timers.escapeAsk = this.time + 1;
+    this.net.claim('escape', 0);
   },
 
   // Show a caption. "{dir}" and "{dist}" are filled in from pos.
@@ -163,7 +190,7 @@ const game = {
   },
 
   win() { winGame(); },
-  step(dt) { updatePlaying(dt); }, // advance the game by dt seconds (used by automated tests)
+  step(dt) { update(dt); }, // advance the game by dt seconds (used by automated tests)
 };
 window.ECHO = game;
 
@@ -184,17 +211,21 @@ function buildWorld(level) {
   console.log(`[ECHO] level seed ${level.seed}`);
 }
 
-// Title screen background: a slowly turning view with silent pulses.
-function startAttract() {
+// Menu background: a slowly turning view with silent pulses.
+// screen = 'title' or 'lobby' (the multiplayer waiting room).
+function startAttract(screen = 'title') {
   if (game.items) game.items.dispose();
   game.items = null;
   game.creature = null;
+  game.localOut = false;
   buildWorld(new Level());
   game.player = new Player(camera, game.level);
-  game.state = 'title';
+  game.state = screen;
   audio.restoreAmbience(); // in case we came here straight after the jumpscare
   game.timers.attract = 0.5;
-  ui.show('title');
+  ui.setFear(0);
+  fx.uniforms.uFear.value = 0;
+  ui.show(screen);
 }
 
 function updateAttract(dt) {
@@ -202,22 +233,26 @@ function updateAttract(dt) {
   game.player.applyCamera(dt, 0);
   if ((game.timers.attract -= dt) <= 0) {
     game.timers.attract = 3.2;
-    pulses.emit({ origin: camera.position.clone(), radius: 16, color: PC.playerColor, strength: 0.9 });
+    pulses.emit({ origin: camera.position.clone(), radius: 16, color: game.myColor, strength: 0.9 });
   }
 }
 
-function newGame() {
+// Start a run. seed = the maze layout (multiplayer: the same for everyone).
+function newGame(seed) {
   audio.init();
   audio.resume();
   if (game.items) game.items.dispose();
-  buildWorld(new Level());
+  buildWorld(new Level(seed));
   game.difficulty = CONFIG.difficulty[game.difficultyName];
   game.stats = { time: 0, claps: 0, hunted: 0, forks: 0 };
   game.pebbles = CONFIG.player.startPebbles;
   game.elevatorPowered = false;
   game.noise = 0;
+  game.localOut = false;
+  game.pendingEnd = null;
   game.player = new Player(camera, game.level);
   game.player.onFootstep = onFootstep;
+  if (game.net) placeForMultiplayer();
   audio.wallsTo = (pos) => game.level.rockBetween(camera.position, pos);
   game.items = new Items(game);
   game.creature = new Creature(game);
@@ -232,7 +267,16 @@ function newGame() {
   game.state = 'playing';
   input.requestLock();
   // a soft first glimpse of your surroundings (the creature can't hear it)
-  pulses.emit({ origin: camera.position.clone(), radius: 7, color: PC.playerColor, strength: 0.7 });
+  pulses.emit({ origin: camera.position.clone(), radius: 7, color: game.myColor, strength: 0.7 });
+}
+
+// Multiplayer: everyone starts in the first cell, side by side.
+function placeForMultiplayer() {
+  const [ox, oz] = spawnOffset(game.net.myIndex);
+  game.player.position.x += ox;
+  game.player.position.z += oz;
+  game.player.applyCamera();
+  game.net.beginGame();
 }
 
 // ---------------------------------------------------------------------
@@ -243,34 +287,57 @@ function playerSoundOrigin() {
 }
 
 function clap() {
+  if (game.state === 'spectating') { game.net.nextSpectateTarget(); return; }
   if (game.state !== 'playing' || game.time < game.timers.clapReady) return;
   game.timers.clapLength = game.difficulty.clapCooldown;
   game.timers.clapReady = game.time + game.timers.clapLength;
   game.stats.claps++;
-  const origin = playerSoundOrigin();
-  pulses.emit({ origin, radius: ACT.clapRadius, color: PC.playerColor, strength: 1.25 });
-  audio.clap();
-  game.emitSound({ pos: origin, loudness: ACT.clapLoudness, fromPlayer: true });
+  playerFx('clap', playerSoundOrigin());
 }
 
 function snap() {
   if (game.state !== 'playing' || game.time < game.timers.snapReady) return;
   game.timers.snapReady = game.time + ACT.snapCooldown;
-  const origin = playerSoundOrigin();
-  pulses.emit({ origin, radius: ACT.snapRadius, color: PC.playerColor, strength: 1.0, fade: 1.5 });
-  audio.snap();
-  game.emitSound({ pos: origin, loudness: ACT.snapLoudness, fromPlayer: true });
+  playerFx('snap', playerSoundOrigin());
 }
 
 // Called by the player every stride.
 function onFootstep(mode) {
-  audio.footstep(mode);
-  if (mode === 'creep') return; // creeping: no light, no noise the creature can hear
+  if (mode === 'creep') { audio.footstep('creep'); return; } // silent: no light, nothing to hear
   const p = game.player.position;
-  const feet = new THREE.Vector3(p.x, 0.1, p.z);
-  const run = mode === 'run';
-  pulses.emit({ origin: feet, radius: run ? ACT.stepRadiusRun : ACT.stepRadiusWalk, color: PC.playerColor, strength: 0.75, fade: 1.2 });
-  game.emitSound({ pos: feet, loudness: run ? ACT.stepLoudnessRun : ACT.stepLoudnessWalk, fromPlayer: true });
+  playerFx(mode, new THREE.Vector3(p.x, 0.1, p.z));
+}
+
+// A noise made by a player — you or a friend: a pulse of light in their
+// colour, a sound, and the creature may hear it. Your own noises are
+// also sent to your friends. kind = clap | snap | walk | run | land
+function playerFx(kind, pos, s = 1, who = game.myId) {
+  const mine = who === game.myId;
+  const color = mine ? game.myColor : game.net.colorOf(who);
+  const at = mine ? null : pos; // your own sounds play "in your head"
+  const far = !mine && pos.distanceTo(camera.position) > ACT.clapRadius + 25; // too far to ever see
+  const light = (opts) => { if (!far) pulses.emit({ origin: pos, color, ...opts }); };
+  const hear = (loudness, fromPlayer = true) => game.emitSound({ pos, loudness, fromPlayer, mine });
+  if (kind === 'clap') {
+    light({ radius: ACT.clapRadius, strength: 1.25 });
+    audio.clap(at);
+    hear(ACT.clapLoudness);
+  } else if (kind === 'snap') {
+    light({ radius: ACT.snapRadius, strength: 1.0, fade: 1.5 });
+    audio.snap(at);
+    hear(ACT.snapLoudness);
+  } else if (kind === 'walk' || kind === 'run') {
+    const run = kind === 'run';
+    light({ radius: run ? ACT.stepRadiusRun : ACT.stepRadiusWalk, strength: 0.75, fade: 1.2 });
+    audio.footstep(kind, at);
+    hear(run ? ACT.stepLoudnessRun : ACT.stepLoudnessWalk);
+  } else if (kind === 'land') {
+    light({ radius: ACT.pebbleRadius * s, strength: 0.9, color: PC.objectColor });
+    audio.pebble(pos, s);
+    hear(ACT.pebbleLoudness * s, false);
+    if (s >= 1) game.caption('[a pebble clatters — {dir}, {dist}]', pos);
+  }
+  if (mine && game.net && game.net.inGame) game.net.sendFx(kind, pos, s);
 }
 
 // ---------------------------------------------------------------------
@@ -304,14 +371,23 @@ function updateFear(dt) {
 }
 
 // ---------------------------------------------------------------------
-// Losing: jumpscare, then the Game Over screen
+// Losing: jumpscare, then Game Over (alone) or spectating (multiplayer)
 // ---------------------------------------------------------------------
 function startJumpscare() {
+  if (game.state === 'paused') ui.show(null);
   game.state = 'jumpscare';
   game.stats.forks = game.items.collected;
-  game.items.dispose();
+  if (!game.net) game.items.dispose(); // alone the world stops; with friends it goes on
   game.creature.body.root.visible = false; // its body would block the view of the face
   jumpscare.start(); // the whole sequence lives in jumpscare.js
+}
+
+function afterJumpscare() {
+  if (!game.net) return gameOver();
+  game.creature.body.root.visible = true;
+  ui.setBlack(false);
+  if (game.pendingEnd) showTeamResult(game.pendingEnd);
+  else startSpectating('caught');
 }
 
 function gameOver() {
@@ -320,6 +396,7 @@ function gameOver() {
   ui.setFear(0);
   fx.uniforms.uFear.value = 0;
   ui.setStats('gameover', game.stats);
+  ui.setTeamResult('gameover', null);
   ui.show('gameover');
   ui.shudder('gameover');
   input.exitLock();
@@ -335,26 +412,125 @@ function winGame() {
   ui.setFear(0);
   fx.uniforms.uFear.value = 0;
   ui.setStats('win', game.stats);
+  ui.setTeamResult('win', null);
   input.exitLock();
   setTimeout(() => ui.show('win'), 1200);
 }
 
 // ---------------------------------------------------------------------
-// Pause / resume
+// Multiplayer: escaping, spectating, team results, rooms
+// ---------------------------------------------------------------------
+function escapedMultiplayer() {
+  game.localOut = true;
+  game.stats.forks = game.items.collected;
+  audio.elevatorDoors();
+  ui.flash('rgba(190,255,190,0.8)', 1500);
+  startSpectating('escaped');
+}
+
+function startSpectating(why) {
+  game.state = 'spectating';
+  game.spectateWhy = why;
+  audio.restoreAmbience();
+  ui.show(null);
+  ui.setHud(false);
+  ui.setSpectate(why, null);
+}
+
+function updateSpectating(dt) {
+  updateWorld(dt);
+  if (game.state === 'spectating') ui.setSpectate(game.spectateWhy, game.net.followCamera());
+}
+
+// The host says the game is over: show everyone the same result.
+function showTeamResult(result) {
+  const escaped = result.escaped.length > 0;
+  const screen = escaped ? 'win' : 'gameover';
+  game.state = escaped ? 'won' : 'dead';
+  game.stats.hunted = result.hunted;
+  game.stats.forks = game.items.collected;
+  game.items.dispose();
+  ui.setFear(0);
+  fx.uniforms.uFear.value = 0;
+  ui.setStats(screen, game.stats);
+  ui.setTeamResult(screen, result);
+  input.exitLock();
+  setTimeout(() => {
+    if (game.state !== 'won' && game.state !== 'dead') return; // already back in the lobby
+    ui.show(screen);
+    if (!escaped) ui.shudder('gameover');
+  }, 1200);
+}
+
+// Things the multiplayer module tells us about.
+const mpHooks = {
+  players(list) {
+    lobby.renderPlayers(list, game.net.myId);
+    if (game.net.isHost) game.net.sendInfo({ difficulty: game.difficultyName });
+  },
+  lobbyInfo(info) { lobby.setDifficulty(info.difficulty); },
+  start(seed, difficulty) {
+    game.difficultyName = difficulty;
+    newGame(seed);
+  },
+  backToLobby() { showLobby(); },
+  end(result) {
+    if (game.state === 'jumpscare') game.pendingEnd = result; // show it after the scare
+    else showTeamResult(result);
+  },
+  caughtMe() {
+    game.localOut = true;
+    startJumpscare();
+  },
+  escapedMe() { escapedMultiplayer(); },
+  closed(reason) { leaveRoom(reason); },
+};
+
+function enterRoom(room) {
+  game.net = new Multiplayer(game, room, mpHooks);
+  document.body.classList.add('mp');
+  document.body.classList.toggle('host', room.isHost);
+  showLobby();
+}
+
+function showLobby() {
+  if (!game.net) return;
+  game.net.endGame();
+  input.exitLock();
+  startAttract('lobby');
+  lobby.showRoom(game.net.room);
+  if (game.net.isHost) game.net.sendInfo({ difficulty: game.difficultyName });
+}
+
+function leaveRoom(reason) {
+  if (game.net) game.net.leave();
+  game.net = null;
+  document.body.classList.remove('mp', 'host');
+  input.exitLock();
+  startAttract('title');
+  lobby.notice(reason);
+}
+
+// ---------------------------------------------------------------------
+// Pause / resume (multiplayer can't pause: the world keeps going)
 // ---------------------------------------------------------------------
 function pause() {
-  if (game.state !== 'playing') return;
+  if (game.state !== 'playing' && game.state !== 'spectating') return;
+  game.pausedFrom = game.state;
   game.state = 'paused';
   game.pausedAt = performance.now();
-  audio.suspend();
+  if (!game.net) audio.suspend();
   ui.show('pause');
 }
 
 function resume() {
   if (game.state !== 'paused') return;
-  game.state = 'playing';
   audio.resume();
-  ui.show(null);
+  if (game.pausedFrom === 'spectating') startSpectating(game.spectateWhy);
+  else {
+    game.state = 'playing';
+    ui.show(null);
+  }
   input.requestLock();
 }
 
@@ -362,20 +538,32 @@ function resume() {
 // Main loop
 // ---------------------------------------------------------------------
 function updatePlaying(dt) {
-  game.time += dt;
-  game.stats.time += dt;
   const { dx, dy } = input.consumeMouse();
   game.player.look(dx, dy);
   game.player.update(dt, input);
+  updateWorld(dt);
+  if (game.state === 'playing') updateHud(dt);
+}
+
+// Everything that keeps going even while you can't move
+// (in multiplayer: while paused, being eaten, or spectating).
+function updateWorld(dt) {
+  game.time += dt;
+  game.stats.time += dt;
   game.items.update(dt);
-  if (game.state !== 'playing') return; // we may have just won
+  if (!game.net && game.state !== 'playing') return; // alone: we may have just won
   game.creature.update(dt);
-  const p = game.player.position, c = game.creature.position;
-  if (Math.hypot(p.x - c.x, p.z - c.z) < CONFIG.creature.catchRadius) { startJumpscare(); return; }
+  if (game.net) game.net.update(dt);
+  else checkCaught();
+  if (game.state === 'won' || game.state === 'dead') return;
   audio.setListener(camera);
   updateDrips(dt);
   updateFear(dt);
-  updateHud(dt);
+}
+
+function checkCaught() {
+  const p = game.player.position, c = game.creature.position;
+  if (Math.hypot(p.x - c.x, p.z - c.z) < CONFIG.creature.catchRadius) startJumpscare();
 }
 
 function updateHud(dt) {
@@ -389,14 +577,25 @@ function updateHud(dt) {
 const clock = new THREE.Clock();
 function frame() {
   requestAnimationFrame(frame);
-  const dt = Math.min(clock.getDelta(), 0.05); // avoid huge jumps after lag
-  if (game.state === 'playing') updatePlaying(dt);
-  else if (game.state === 'title') { game.time += dt; updateAttract(dt); }
-  else if (game.state === 'jumpscare') { game.time += dt; if (jumpscare.update(dt)) gameOver(); }
-  else if (game.state === 'won' || game.state === 'dead') game.time += dt;
+  update(Math.min(clock.getDelta(), 0.05)); // limit dt: avoid huge jumps after lag
   pulses.update(game.time);
   fx.uniforms.uTime.value = game.time;
   composer.render();
+}
+
+// Advance the game by dt seconds, whatever state it is in.
+function update(dt) {
+  const s = game.state;
+  if (s === 'playing') updatePlaying(dt);
+  else if (s === 'title' || s === 'lobby') { game.time += dt; updateAttract(dt); }
+  else if (s === 'jumpscare') {
+    if (game.net) updateWorld(dt); else game.time += dt;
+    if (jumpscare.update(dt)) afterJumpscare();
+  } else if (s === 'spectating') updateSpectating(dt);
+  else if (s === 'paused' && game.net) {
+    updateWorld(dt);
+    if (game.pausedFrom === 'spectating' && game.net) game.net.followCamera();
+  } else if (s === 'won' || s === 'dead') game.time += dt;
 }
 
 // ---------------------------------------------------------------------
@@ -410,31 +609,42 @@ const DIFF_HELP = {
 
 function selectDifficulty(name) {
   game.difficultyName = name;
-  document.querySelectorAll('#difficulty button').forEach((b) => b.classList.toggle('selected', b.dataset.diff === name));
+  document.querySelectorAll('[data-diff]').forEach((b) => b.classList.toggle('selected', b.dataset.diff === name));
   document.getElementById('diffHelp').textContent = DIFF_HELP[name];
+  if (game.net && game.net.isHost) game.net.sendInfo({ difficulty: name });
 }
+
+const lobby = new Lobby(ui, {
+  enterRoom,
+  start: () => game.net.hostStart(game.difficultyName),
+  leave: () => leaveRoom(),
+  back: () => ui.show('title'),
+});
 
 function wireButtons() {
   const on = (id, fn) => document.getElementById(id).addEventListener('click', fn);
-  document.querySelectorAll('#difficulty button').forEach((b) => b.addEventListener('click', () => selectDifficulty(b.dataset.diff)));
+  document.querySelectorAll('[data-diff]').forEach((b) => b.addEventListener('click', () => selectDifficulty(b.dataset.diff)));
   selectDifficulty(game.difficultyName);
-  on('startBtn', newGame);
-  on('retryBtn', newGame);
-  on('againBtn', newGame);
+  on('startBtn', () => { lobby.notice(''); newGame(); });
+  on('retryBtn', () => newGame());
+  on('againBtn', () => newGame());
   on('resumeBtn', resume);
   for (const id of ['quitBtn', 'menuBtn1', 'menuBtn2']) on(id, () => { audio.resume(); startAttract(); });
+  on('mpBtn', () => { audio.init(); lobby.notice(''); lobby.openMenu(); });
+  for (const id of ['lobbyBtn1', 'lobbyBtn2']) on(id, () => game.net && game.net.hostBackToLobby());
+  for (const id of ['leaveBtn1', 'leaveBtn2', 'leaveBtn3']) on(id, () => leaveRoom());
 }
 
 input.on('clap', clap);
 input.on('snap', snap);
 input.on('throw', () => game.state === 'playing' && game.items.throwPebble());
 input.on('pause', () => {
-  if (game.state === 'playing') pause();
+  if (game.state === 'playing' || game.state === 'spectating') pause();
   // ignore the same Esc press that just released the mouse (some browsers send both)
   else if (game.state === 'paused' && performance.now() - game.pausedAt > 400) resume();
 });
 input.on('lockchange', (locked) => { if (!locked) pause(); });
-input.on('canvasclick', () => { if (game.state === 'playing') input.requestLock(); });
+input.on('canvasclick', () => { if (game.state === 'playing' || game.state === 'spectating') input.requestLock(); });
 
 wireButtons();
 startAttract();

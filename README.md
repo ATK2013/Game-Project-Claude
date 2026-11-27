@@ -18,6 +18,36 @@ python3 -m http.server
 
 Then open **http://localhost:8000** in Chrome, Edge or Firefox. Headphones are recommended.
 
+## Playing with friends (multiplayer)
+
+Up to 4 players can explore the mine together. Everyone sees each other's claps in
+their own colour, and the Listener hears all of you.
+
+1. Everyone opens the game in their own browser (see "Sharing the game" below).
+2. One player clicks **PLAY WITH FRIENDS → CREATE A ROOM** and gets a 5-letter room code.
+3. Friends click **PLAY WITH FRIENDS**, type the code and click **JOIN**.
+4. The host picks a difficulty and clicks **START GAME**.
+
+How it works together:
+- The tuning forks count for the whole team.
+- If the Listener catches you, you watch through a friend's eyes (SPACE switches friend).
+  After a catch it stands still for a few seconds, which gives the others a chance to run.
+- The game ends when nobody is left in the mine. The team wins if anyone reached the elevator.
+- Multiplayer never pauses: pressing Esc opens the menu, but the creature keeps hunting.
+
+**Sharing the game.** Each player needs to open the game. Two easy ways:
+- **GitHub Pages (easiest):** in this repository on GitHub, go to *Settings → Pages* and
+  publish the `main` branch. Everyone can then just open the Pages address in their browser.
+  No downloads and no Python needed.
+- **Local copies:** every player downloads the game and runs `python3 -m http.server`.
+
+The connection is browser-to-browser (WebRTC, using PeerJS). PeerJS's free public server only
+introduces the players to each other. Some very strict networks (some school or office
+networks) block direct connections; if joining fails there, try another network.
+
+**Testing on one computer:** open `http://localhost:8000/?net=local` in two browser tabs.
+Rooms then connect the tabs to each other, with no internet needed.
+
 ## Controls
 
 | Key | Action |
@@ -30,6 +60,7 @@ Then open **http://localhost:8000** in Chrome, Edge or Firefox. Headphones are r
 | Q / right click | **snap**: small quiet pulse (~5 m) |
 | E | throw a pebble (makes noise where it lands, as a distraction) |
 | Esc | pause |
+| Space (after being caught) | watch a different friend (multiplayer) |
 
 **Goal:** find the 4 humming tuning forks (follow their gold ripples and hum),
 then reach the old elevator at the far end of the mine.
@@ -48,6 +79,9 @@ then reach the old elevator at the far end of the mine.
 | `src/creature.js` | the Listener: body, hearing and AI |
 | `src/items.js` | tuning forks, tin cans, pebbles, elevator |
 | `src/jumpscare.js` | the jumpscare: stare, lunge and the chomping grey jaws |
+| `src/net.js` | multiplayer rooms and connections (PeerJS, or browser tabs with `?net=local`) |
+| `src/lobby.js` | the "Play with friends" menu and the waiting room |
+| `src/multiplayer.js` | keeps everyone's game in sync during a match |
 | `src/audio.js` | all sounds, synthesised with the Web Audio API |
 | `src/ui.js` | HUD, captions and screens |
 

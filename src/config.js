@@ -175,6 +175,24 @@ export const CONFIG = {
   },
 
   // ---------------------------------------------------------------
+  // Multiplayer (rooms with friends)
+  // ---------------------------------------------------------------
+  multiplayer: {
+    maxPlayers: 4,         // players per room, including the host
+    sendRate: 15,          // position updates sent per second (higher = smoother, more data)
+    smoothing: 12,         // how quickly friends' positions catch up (higher = snappier)
+    joinTimeout: 10,       // seconds to wait when joining before giving up
+    codeLength: 5,         // letters in a room code
+    feedTime: 4,           // after catching someone, the creature stands still this long
+    // Each player's pulse + body colour (host first). R, G, B from 0 to 1.
+    colors: [[0.50, 0.88, 1.00], [0.75, 0.62, 1.00], [1.00, 0.56, 0.80], [0.95, 0.95, 0.90]],
+    colorNames: ['cyan', 'violet', 'pink', 'white'],
+    // Options for the PeerJS connection broker. Leave empty to use the free
+    // public PeerJS server, or e.g. { host: 'my.server.com', port: 443, path: '/' }.
+    peerOptions: {},
+  },
+
+  // ---------------------------------------------------------------
   // Captions / HUD
   // ---------------------------------------------------------------
   ui: {

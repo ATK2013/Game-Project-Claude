@@ -149,6 +149,10 @@ export class Creature {
     this.blinkLeft = 0;          // seconds left in the current blink
     this.breathTimer = 1;
     this.lastBreathCaption = -999;
+    this.feeding = 0;            // seconds left standing still after a catch
+    // multiplayer friends don't run the AI: they copy the host's creature
+    this.remote = !!(game.net && !game.net.isHost);
+    this.netTarget = null;
     this.syncBody();
   }
 
@@ -179,8 +183,7 @@ export class Creature {
   startHunt(pos) {
     if (this.state !== HUNT) {
       this.game.stats.hunted++;
-      this.game.audio.creatureScreech(this.headPosition());
-      this.game.caption('[a piercing shriek — it is HUNTING you]', this.position, true);
+      this.fx('screech', this.headPosition());
       this.clickTimer = 0.3;
     }
     this.state = HUNT;
@@ -197,7 +200,46 @@ export class Creature {
   loseTrack() {
     this.state = WANDER;
     this.path = [];
-    this.game.caption('[the clicking slows... it has lost you]', this.position);
+    this.fx('lost', this.position);
+  }
+
+  // Multiplayer: after catching someone it stands still for a while.
+  feed(seconds) {
+    this.feeding = seconds;
+    this.state = WANDER;
+    this.path = [];
+  }
+
+  // ------------------------------------------------------------------
+  // Effects (sound + light + caption). In multiplayer the host's creature
+  // also sends each effect to the friends, who play it with applyFx().
+  // ------------------------------------------------------------------
+  fx(kind, pos) {
+    this.applyFx(kind, pos);
+    if (this.game.net) this.game.net.sendCreatureFx(kind, pos);
+  }
+
+  applyFx(kind, pos) {
+    const g = this.game, red = CONFIG.pulse.creatureColor;
+    if (kind === 'click') {
+      g.pulses.emit({ origin: pos, radius: C.clickRadius, color: red, strength: 0.9 });
+      g.audio.creatureClick(pos);
+      this.flare = 0.5; // its eyes flare as it clicks
+      g.caption('[clicking — {dir}, {dist}]', pos);
+    } else if (kind === 'step') {
+      g.audio.creatureStep(pos);
+      g.pulses.emit({ origin: pos, radius: 1.6, color: red, strength: 0.5, fade: 0.8 });
+      const dist = Math.hypot(g.player.position.x - pos.x, g.player.position.z - pos.z);
+      if (dist < CONFIG.ui.closeDistance + 2 && g.time - this.lastStepCaption > 4) {
+        this.lastStepCaption = g.time;
+        g.caption('[dragging footsteps — {dir}, {dist}]', pos);
+      }
+    } else if (kind === 'screech') {
+      g.audio.creatureScreech(pos);
+      g.caption(`[a piercing shriek — it is HUNTING${g.net ? '' : ' you'}]`, pos, true);
+    } else if (kind === 'lost') {
+      g.caption(`[the clicking slows... it has lost ${g.net ? 'its prey' : 'you'}]`, pos);
+    }
   }
 
   // Plan a route (BFS on the grid) to a world position.
@@ -229,15 +271,41 @@ export class Creature {
   // Per-frame update
   // ------------------------------------------------------------------
   update(dt) {
+    const moved = this.remote ? this.followNetwork(dt) : this.updateBrain(dt);
+    this.updateBreathing(dt);
+    this.animate(dt, moved);
+    this.updateEyes(dt);
+    this.syncBody();
+  }
+
+  // The thinking part: only runs alone or on the multiplayer host.
+  updateBrain(dt) {
+    if (this.feeding > 0) { this.feeding -= dt; return 0; }
     this.think(dt);
     const speed = { WANDER: C.wanderSpeed, INVESTIGATE: C.investigateSpeed, HUNT: C.huntSpeed }[this.state];
     const moved = this.followPath(dt, speed * this.diff.creatureSpeed);
     this.updateSteps(moved);
     this.updateClicks(dt);
-    this.updateBreathing(dt);
-    this.animate(dt, moved);
-    this.updateEyes(dt);
-    this.syncBody();
+    return moved;
+  }
+
+  // Multiplayer friends: the host tells us where the creature is.
+  setNetState(x, z, yaw, state) {
+    this.netTarget = { x, z, yaw };
+    this.state = state;
+  }
+
+  // Glide toward the host's position. Returns metres moved (for the walk animation).
+  followNetwork(dt) {
+    const t = this.netTarget;
+    if (!t) return 0;
+    const dx = t.x - this.position.x, dz = t.z - this.position.z;
+    const d = Math.hypot(dx, dz);
+    const k = d > 5 ? 1 : Math.min(1, dt * CONFIG.multiplayer.smoothing);
+    this.position.x += dx * k;
+    this.position.z += dz * k;
+    this.turnToward(t.yaw, dt);
+    return d * k;
   }
 
   distanceToPlayer() {
@@ -285,14 +353,7 @@ export class Creature {
     this.stepLeft -= moved;
     if (this.stepLeft > 0) return;
     this.stepLeft = C.stepLength;
-    const feet = new THREE.Vector3(this.position.x, 0.1, this.position.z);
-    this.game.audio.creatureStep(feet);
-    this.game.pulses.emit({ origin: feet, radius: 1.6, color: CONFIG.pulse.creatureColor, strength: 0.5, fade: 0.8 });
-    const dist = this.game.player.position.distanceTo(new THREE.Vector3(feet.x, 0, feet.z));
-    if (dist < CONFIG.ui.closeDistance + 2 && this.game.time - this.lastStepCaption > 4) {
-      this.lastStepCaption = this.game.time;
-      this.game.caption('[dragging footsteps — {dir}, {dist}]', feet);
-    }
+    this.fx('step', new THREE.Vector3(this.position.x, 0.1, this.position.z));
   }
 
   // Every few seconds: click, sending out a RED echolocation pulse.
@@ -301,11 +362,7 @@ export class Creature {
     if (this.clickTimer > 0) return;
     const range = { WANDER: C.clickWander, INVESTIGATE: C.clickInvestigate, HUNT: C.clickHunt }[this.state];
     this.clickTimer = rand(range);
-    const head = this.headPosition();
-    this.game.pulses.emit({ origin: head, radius: C.clickRadius, color: CONFIG.pulse.creatureColor, strength: 0.9 });
-    this.game.audio.creatureClick(head);
-    this.flare = 0.5; // its eyes flare as it clicks
-    this.game.caption('[clicking — {dir}, {dist}]', head);
+    this.fx('click', this.headPosition());
   }
 
   // Swing limbs while walking; stare at you, or twitch the head.
