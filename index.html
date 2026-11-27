@@ -120,8 +120,34 @@
       position: fixed; inset: 0; opacity: 0; pointer-events: none; z-index: 11;
       background: radial-gradient(ellipse at center, transparent 45%, rgba(120, 0, 0, 0.75) 100%);
     }
+    /* ---------- Multiplayer ---------- */
+    .mp .solo-only, body:not(.mp) .mp-only, body:not(.host) .host-only, .host .client-only { display: none !important; }
+    input[type=text] {
+      font: inherit; color: var(--cyan); background: rgba(0, 20, 26, 0.6); border: 1px solid #2f5761;
+      padding: 10px 12px; letter-spacing: 0.12em; text-align: center; outline: none;
+    }
+    input[type=text]:focus { border-color: var(--cyan); }
+    #joinCode { width: 150px; text-transform: uppercase; letter-spacing: 0.3em; }
+    .mpcol { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 6px 0; }
+    #mpStatus { min-height: 20px; font-size: 14px; color: #9fc3cc; margin: 6px 0; }
+    #mpStatus.error { color: #ff9a8a; }
+    #roomCode { color: #fff; letter-spacing: 0.3em; text-shadow: 0 0 14px #6fdcff; }
+    #playerList { list-style: none; padding: 0; margin: 14px 0 6px; min-width: 260px; text-align: left; }
+    #playerList li { padding: 6px 4px; border-bottom: 1px solid #16282d; }
+    .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 10px; box-shadow: 0 0 8px currentColor; }
+    #titleNotice { color: #ffb4a0; min-height: 18px; font-size: 14px; margin-top: 8px; }
+    #spectate {
+      position: fixed; left: 0; right: 0; top: 28px; text-align: center; z-index: 14; pointer-events: none;
+      letter-spacing: 0.15em; font-size: 15px; text-shadow: 0 0 8px #000;
+    }
+    #spectate small { display: block; color: var(--dim); margin-top: 6px; font-size: 12px; }
+    .team { color: #cfeef6; margin: -6px 0 14px; font-size: 14px; line-height: 1.6; }
+    .team span { color: var(--dim); }
     #error { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 30px; color: #ff9988; z-index: 50; text-align: center; }
   </style>
+
+  <!-- PeerJS (multiplayer connections), pinned to an exact version. Adds window.Peer -->
+  <script defer src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
 
   <!-- Three.js, pinned to an exact version, loaded from a CDN -->
   <script type="importmap">
@@ -157,17 +183,64 @@
     </div>
     <div class="diffhelp" id="diffHelp"></div>
     <label class="opt"><input type="checkbox" id="optCaptions" /> Show sound captions</label>
-    <button class="big" id="startBtn">ENTER THE MINE</button>
+    <div class="row">
+      <button class="big" id="startBtn">ENTER THE MINE</button>
+      <button class="big" id="mpBtn">PLAY WITH FRIENDS</button>
+    </div>
+    <div id="titleNotice"></div>
     <div class="note">🎧 Headphones recommended — you'll need to hear where it is.</div>
+  </div>
+
+  <!-- ===== Multiplayer: create or join a room ===== -->
+  <div id="mpmenu" class="screen hidden">
+    <h2>PLAY WITH FRIENDS</h2>
+    <div class="pitch">Find the forks together. The Listener hears all of you.</div>
+    <div class="mpcol">
+      <label class="opt">Your name&nbsp;&nbsp;<input type="text" id="mpName" maxlength="14" placeholder="NAME" /></label>
+      <button class="big" id="createBtn">CREATE A ROOM</button>
+      <div class="pitch" style="margin:8px 0 0">— or join a friend's room —</div>
+      <div class="row">
+        <input type="text" id="joinCode" placeholder="CODE" autocomplete="off" />
+        <button id="joinBtn">JOIN</button>
+      </div>
+      <div id="mpStatus"></div>
+      <button id="mpBackBtn">BACK</button>
+    </div>
+    <div class="note">Up to 4 players. Everyone opens the game in their own browser; the room code connects you.</div>
+    <div class="note hidden" id="localNote">Local test mode (?net=local): rooms connect tabs in this browser only.</div>
+  </div>
+
+  <!-- ===== Multiplayer: the waiting room ===== -->
+  <div id="lobby" class="screen hidden">
+    <h2>ROOM <span id="roomCode"></span></h2>
+    <div class="row"><button id="copyCodeBtn">COPY CODE</button></div>
+    <div class="pitch" style="margin:10px 0 0">Send this code to your friends so they can join.</div>
+    <ul id="playerList"></ul>
+    <div class="note" id="playerCount" style="margin-top:0"></div>
+    <div class="host-only">
+      <div class="row" style="margin-top:14px">
+        <button data-diff="easy">EASY</button>
+        <button data-diff="normal">NORMAL</button>
+        <button data-diff="hard">HARD</button>
+      </div>
+      <button class="big" id="lobbyStartBtn">START GAME</button>
+    </div>
+    <div class="client-only">
+      <div class="pitch" style="margin-top:14px">Difficulty: <span id="lobbyDifficulty">NORMAL</span></div>
+      <div class="pitch">Waiting for the host to start…</div>
+    </div>
+    <div class="row"><button id="lobbyLeaveBtn">LEAVE ROOM</button></div>
   </div>
 
   <!-- ===== Pause ===== -->
   <div id="pause" class="screen hidden">
     <h2>PAUSED</h2>
+    <div class="pitch mp-only">Multiplayer never pauses — it can still find you!</div>
     <label class="opt"><input type="checkbox" id="optCaptions2" /> Show sound captions</label>
     <div class="row">
       <button id="resumeBtn">RESUME</button>
-      <button id="quitBtn">MAIN MENU</button>
+      <button id="quitBtn" class="solo-only">MAIN MENU</button>
+      <button id="leaveBtn3" class="mp-only">LEAVE ROOM</button>
     </div>
   </div>
 
@@ -176,9 +249,13 @@
     <h2>IT HEARD YOU</h2>
     <div class="pitch">The Listener found you in the dark.</div>
     <div class="stats" id="gameoverStats"></div>
+    <div class="team" id="gameoverTeam"></div>
     <div class="row">
-      <button id="retryBtn">TRY AGAIN</button>
-      <button id="menuBtn1">MAIN MENU</button>
+      <button id="retryBtn" class="solo-only">TRY AGAIN</button>
+      <button id="menuBtn1" class="solo-only">MAIN MENU</button>
+      <button id="lobbyBtn1" class="mp-only host-only">BACK TO LOBBY</button>
+      <span class="mp-only client-only pitch">Waiting for the host…</span>
+      <button id="leaveBtn1" class="mp-only">LEAVE ROOM</button>
     </div>
   </div>
 
@@ -187,11 +264,18 @@
     <h2>YOU ESCAPED</h2>
     <div class="pitch">The cage rattles upward. Below you, the clicking fades.</div>
     <div class="stats" id="winStats"></div>
+    <div class="team" id="winTeam"></div>
     <div class="row">
-      <button id="againBtn">PLAY AGAIN</button>
-      <button id="menuBtn2">MAIN MENU</button>
+      <button id="againBtn" class="solo-only">PLAY AGAIN</button>
+      <button id="menuBtn2" class="solo-only">MAIN MENU</button>
+      <button id="lobbyBtn2" class="mp-only host-only">BACK TO LOBBY</button>
+      <span class="mp-only client-only pitch">Waiting for the host…</span>
+      <button id="leaveBtn2" class="mp-only">LEAVE ROOM</button>
     </div>
   </div>
+
+  <!-- ===== Spectating (multiplayer, after you're out) ===== -->
+  <div id="spectate" class="hidden"></div>
 
   <!-- ===== HUD ===== -->
   <div id="hud" class="hidden">

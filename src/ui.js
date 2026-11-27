@@ -7,7 +7,8 @@
 import { CONFIG } from './config.js';
 
 const $ = (id) => document.getElementById(id);
-const SCREENS = ['title', 'pause', 'gameover', 'win'];
+const SCREENS = ['title', 'pause', 'gameover', 'win', 'mpmenu', 'lobby'];
+const SOLO_TITLES = { win: 'YOU ESCAPED', gameover: 'IT HEARD YOU' };
 const RING_LENGTH = 2 * Math.PI * 16; // circumference of the cooldown circle (r = 16)
 
 export class UI {
@@ -34,6 +35,7 @@ export class UI {
   show(name) {
     for (const s of SCREENS) $(s).classList.toggle('hidden', s !== name);
     $('hud').classList.toggle('hidden', name !== null);
+    $('spectate').classList.add('hidden');
     if (name !== null) this.captionBox.innerHTML = '';
   }
 
@@ -74,6 +76,30 @@ export class UI {
       f.style.transition = `opacity ${ms}ms ease-out`;
       f.style.opacity = 0;
     });
+  }
+
+  // Multiplayer: the line at the top while you watch a friend.
+  setSpectate(why, name) {
+    const head = why === 'caught' ? 'YOU WERE CAUGHT' : 'YOU ESCAPED';
+    const who = name ? `watching ${name}` : 'waiting for the others…';
+    const html = `${head} — ${who}<small>SPACE: next player · ESC: menu</small>`;
+    if ($('spectate').innerHTML !== html) $('spectate').innerHTML = html;
+    $('spectate').classList.remove('hidden');
+  }
+
+  // Multiplayer end screens list who escaped and who was caught.
+  // result = null puts back the single-player text.
+  setTeamResult(screen, result) {
+    const title = document.querySelector(`#${screen} h2`);
+    if (!result) {
+      title.textContent = SOLO_TITLES[screen];
+      $(`${screen}Team`).innerHTML = '';
+      return;
+    }
+    const total = result.escaped.length + result.caught.length;
+    title.textContent = result.escaped.length ? `${result.escaped.length} OF ${total} ESCAPED` : 'NOBODY ESCAPED';
+    const line = (label, names) => (names.length ? `<div><span>${label}:</span> ${names.map(escapeHtml).join(', ')}</div>` : '');
+    $(`${screen}Team`).innerHTML = line('Escaped', result.escaped) + line('Caught', result.caught);
   }
 
   // Hide or show the in-game HUD and captions.
@@ -126,4 +152,8 @@ export function describeDirection(player, pos) {
   const d = Math.hypot(tx, tz);
   const dist = d < CONFIG.ui.closeDistance ? 'close' : d < CONFIG.ui.nearDistance ? 'nearby' : 'distant';
   return { dir, dist };
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }

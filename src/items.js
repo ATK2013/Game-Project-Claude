@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { makeEchoObject } from './pulse.js';
+import { makeRng } from './level.js';
 
 const G = CONFIG.goal;
 const ACT = CONFIG.actions;
@@ -16,6 +17,8 @@ export class Items {
   constructor(game) {
     this.game = game;
     this.level = game.level;
+    // seeded randomness: in multiplayer every player gets identical item spots
+    this.rng = makeRng(this.level.seed + 99);
     this.forks = this.level.forks.map((cell, i) => this.makeFork(cell, i));
     this.cans = this.level.cans.map((cell) => this.makeCan(cell));
     this.piles = this.level.pebblePiles.map((cell) => this.makePile(cell));
@@ -39,9 +42,33 @@ export class Items {
   // A random spot inside a cell, away from its edges.
   spotIn([x, z], spread) {
     const p = this.level.toWorld(x, z);
-    p.x += (Math.random() - 0.5) * spread;
-    p.z += (Math.random() - 0.5) * spread;
+    p.x += (this.rng() - 0.5) * spread;
+    p.z += (this.rng() - 0.5) * spread;
     return p;
+  }
+
+  // ------------------------------------------------------------------
+  // Claims: asking to pick something up. Alone it happens at once; in
+  // multiplayer the host decides, so two players can't grab the same fork.
+  // ------------------------------------------------------------------
+  tryClaim(kind, i, thing, extra = {}) {
+    if (thing.pendingUntil > this.game.time) return; // already asked, waiting for the answer
+    thing.pendingUntil = this.game.time + 1;
+    this.game.claim(kind, i, extra);
+  }
+
+  canClaim(kind, i) {
+    if (kind === 'fork') return !this.forks[i].taken;
+    if (kind === 'pile') return !this.piles[i].taken;
+    if (kind === 'can') return this.cans[i].cooldown <= 0;
+    return false;
+  }
+
+  // Do it (on every player's machine). 'by' = who did it.
+  applyClaim(kind, i, by, data = {}) {
+    if (kind === 'fork') this.takeFork(this.forks[i], by);
+    else if (kind === 'pile') this.takePile(this.piles[i], by);
+    else if (kind === 'can') this.kickCan(this.cans[i], data.v, data.creep, by);
   }
 
   // ------------------------------------------------------------------
@@ -66,28 +93,30 @@ export class Items {
 
   updateForks(dt) {
     const player = this.game.player.position;
-    for (const f of this.forks) {
+    for (const [i, f] of this.forks.entries()) {
       if (f.taken) continue;
       f.mesh.rotation.y += dt * 0.8;
       if ((f.timer -= dt) <= 0) {
         f.timer = G.forkPulseInterval;
         this.game.pulses.emit({ origin: f.top, radius: G.forkPulseRadius, color: CONFIG.pulse.forkColor, strength: 0.7, fade: 1.3 });
       }
-      if (flatDist(player, f.pos) < G.forkPickupDistance) this.takeFork(f);
+      if (!this.game.localOut && flatDist(player, f.pos) < G.forkPickupDistance) this.tryClaim('fork', i, f);
     }
     this.captionNearestHum();
   }
 
-  takeFork(f) {
+  takeFork(f, by) {
+    if (f.taken) return;
     f.taken = true;
     f.hum.stop();
     this.game.world.remove(f.mesh);
     this.collected++;
-    const g = this.game;
+    const g = this.game, mine = by === g.myId;
     g.audio.forkRing(f.top, f.freq);
     g.pulses.emit({ origin: f.top, radius: G.forkRingRadius, color: CONFIG.pulse.forkColor, strength: 1.2 });
-    g.emitSound({ pos: f.top, loudness: G.forkRingLoudness, fromPlayer: true });
-    g.caption(`[a tuning fork rings out — ${this.collected}/${G.forkCount}]`, null, true);
+    g.emitSound({ pos: f.top, loudness: G.forkRingLoudness, fromPlayer: true, mine });
+    const who = mine ? 'a tuning fork rings out' : `${g.nameOf(by)} found a tuning fork`;
+    g.caption(`[${who} — ${this.collected}/${G.forkCount}]`, null, true);
     g.ui.setForks(this.collected, G.forkCount);
     if (this.collected >= G.forkCount) this.powerTimer = 1.5; // power up after a short pause
   }
@@ -118,10 +147,10 @@ export class Items {
 
   updateCans(dt) {
     const player = this.game.player;
-    for (const c of this.cans) {
+    for (const [i, c] of this.cans.entries()) {
       c.cooldown -= dt;
-      const touching = flatDist(player.position, c.pos) < CONFIG.player.radius + 0.12;
-      if (touching && c.cooldown <= 0 && player.velocity.length() > 0.3) this.kickCan(c, player);
+      const touching = !this.game.localOut && flatDist(player.position, c.pos) < CONFIG.player.radius + 0.12;
+      if (touching && c.cooldown <= 0 && player.velocity.length() > 0.3) this.requestKick(i, c, player);
       // slide and tumble after being kicked
       if (c.vel.lengthSq() > 0.001) {
         c.pos.addScaledVector(c.vel, dt);
@@ -133,24 +162,30 @@ export class Items {
     }
   }
 
-  kickCan(c, player) {
-    const g = this.game;
-    const creeping = player.mode === 'creep';
+  // You walked into a can: work out how it flies, then claim the kick.
+  requestKick(i, c, player) {
+    const creep = player.mode === 'creep';
+    const k = creep ? 0.6 : 1.6;
+    const v = [player.velocity.x * k + (Math.random() - 0.5), player.velocity.z * k + (Math.random() - 0.5)];
+    this.tryClaim('can', i, c, { v, creep });
+  }
+
+  kickCan(c, v, creeping, by) {
+    const g = this.game, mine = by === g.myId;
     c.cooldown = 1.5;
-    c.vel.copy(player.velocity).setY(0).multiplyScalar(creeping ? 0.6 : 1.6);
-    c.vel.x += (Math.random() - 0.5); c.vel.z += (Math.random() - 0.5);
+    c.vel.set(v[0], 0, v[1]);
     if (creeping) {
       // creeping: you nudge it gently — only a soft clink
       g.audio.pebble(c.pos, 0.4);
       g.pulses.emit({ origin: c.pos, radius: 2, color: CONFIG.pulse.objectColor, strength: 0.6 });
-      g.emitSound({ pos: c.pos, loudness: 5, fromPlayer: true });
+      g.emitSound({ pos: c.pos, loudness: 5, fromPlayer: true, mine });
       return;
     }
     c.mesh.rotation.x = Math.PI / 2; // knocked over
     g.audio.can(c.pos);
     g.pulses.emit({ origin: c.pos, radius: ACT.canRadius, color: CONFIG.pulse.objectColor, strength: 1 });
-    g.emitSound({ pos: c.pos, loudness: ACT.canLoudness, fromPlayer: true });
-    g.caption('[CLANG — a tin can clatters across the floor]', null, true);
+    g.emitSound({ pos: c.pos, loudness: ACT.canLoudness, fromPlayer: true, mine });
+    g.caption('[CLANG — a tin can clatters across the floor]', mine ? null : c.pos, true);
   }
 
   // ------------------------------------------------------------------
@@ -159,7 +194,7 @@ export class Items {
   makePile(cell) {
     const pos = this.spotIn(cell, 1.6);
     const geoms = [0, 1, 2].map((i) =>
-      new THREE.IcosahedronGeometry(0.05 + Math.random() * 0.02, 0)
+      new THREE.IcosahedronGeometry(0.05 + this.rng() * 0.02, 0)
         .translate(pos.x + Math.cos(i * 2.1) * 0.09, 0.04, pos.z + Math.sin(i * 2.1) * 0.09));
     const meshes = geoms.map((geo) => this.add(geo, { surface: this.game.mats.surface, line: this.game.mats.objectLine }, 20));
     return { pos, meshes, taken: false };
@@ -167,16 +202,22 @@ export class Items {
 
   updatePiles() {
     const g = this.game;
-    for (const p of this.piles) {
-      if (p.taken || flatDist(g.player.position, p.pos) > 0.8) continue;
-      if (g.pebbles >= CONFIG.player.maxPebbles) continue;
-      p.taken = true;
-      p.meshes.forEach((m) => g.world.remove(m));
-      g.pebbles = Math.min(CONFIG.player.maxPebbles, g.pebbles + 2);
-      g.ui.setPebbles(g.pebbles);
-      g.audio.pickup();
-      g.caption('[you pick up some pebbles]');
+    if (g.localOut || g.pebbles >= CONFIG.player.maxPebbles) return;
+    for (const [i, p] of this.piles.entries()) {
+      if (!p.taken && flatDist(g.player.position, p.pos) < 0.8) this.tryClaim('pile', i, p);
     }
+  }
+
+  takePile(p, by) {
+    const g = this.game;
+    if (p.taken) return;
+    p.taken = true;
+    p.meshes.forEach((m) => g.world.remove(m));
+    if (by !== g.myId) return; // a friend took them
+    g.pebbles = Math.min(CONFIG.player.maxPebbles, g.pebbles + 2);
+    g.ui.setPebbles(g.pebbles);
+    g.audio.pickup();
+    g.caption('[you pick up some pebbles]');
   }
 
   // Called when the player presses E.
@@ -230,13 +271,9 @@ export class Items {
     p.bounces++;
   }
 
-  // Sound + pulse where a pebble hits something.
+  // Sound + pulse where a pebble hits something (shared with friends).
   landNoise(p, strength) {
-    const g = this.game;
-    g.audio.pebble(p.pos, strength);
-    g.pulses.emit({ origin: p.pos.clone(), radius: ACT.pebbleRadius * strength, color: CONFIG.pulse.objectColor, strength: 0.9 });
-    g.emitSound({ pos: p.pos.clone(), loudness: ACT.pebbleLoudness * strength, fromPlayer: false });
-    if (strength >= 1) g.caption('[a pebble clatters — {dir}, {dist}]', p.pos);
+    this.game.playerFx('land', p.pos.clone(), strength);
   }
 
   // ------------------------------------------------------------------
@@ -255,7 +292,7 @@ export class Items {
 
   powerElevator() {
     const g = this.game;
-    if (g.elevatorPowered || g.state !== 'playing') return;
+    if (g.elevatorPowered || this.disposed) return;
     g.elevatorPowered = true;
     const pos = this.elevatorPos.clone().setY(1.5);
     g.audio.elevatorClank(pos);
@@ -271,7 +308,7 @@ export class Items {
     const dist = flatDist(g.player.position, this.elevatorPos);
     if (this.powerTimer > 0 && (this.powerTimer -= dt) <= 0) this.powerElevator();
     if (!g.elevatorPowered) {
-      if (dist < 2 && g.time - this.lastElevatorHint > 8) {
+      if (!g.localOut && dist < 2 && g.time - this.lastElevatorHint > 8) {
         this.lastElevatorHint = g.time;
         g.caption(`[the elevator is dead — it needs all ${G.forkCount} tuning forks]`);
       }
@@ -287,7 +324,7 @@ export class Items {
       g.emitSound({ pos, loudness: G.elevatorHumLoudness, fromPlayer: false });
       g.caption('[machinery humming — {dir}, {dist}]', pos);
     }
-    if (dist < G.elevatorReachDistance) g.win();
+    if (!g.localOut && dist < G.elevatorReachDistance) g.reachedElevator();
   }
 
   // ------------------------------------------------------------------
@@ -306,6 +343,7 @@ export class Items {
 
   // Stop all looping sounds (game over / restart).
   dispose() {
+    this.disposed = true;
     this.forks.forEach((f) => !f.taken && f.hum.stop());
     if (this.elevatorHum) this.elevatorHum.stop();
   }

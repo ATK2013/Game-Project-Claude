@@ -163,21 +163,23 @@ export class AudioEngine {
   // ------------------------------------------------------------------
   // Player sounds
   // ------------------------------------------------------------------
-  clap() {
-    const out = this.output(null, { gain: 0.9, reverb: 1.0 });
+  // Player sounds: pos = null means "you" (in your head); a position
+  // places a friend's sound in the world, so you hear where they are.
+  clap(pos = null) {
+    const out = this.output(pos, { gain: 0.9, reverb: 1.0 });
     this.noiseBurst(out, { f: 1900, q: 0.9, dur: 0.11, gain: 1.0 });
     this.noiseBurst(out, { f: 900, q: 1.2, dur: 0.07, gain: 0.6 });
   }
 
-  snap() {
-    const out = this.output(null, { gain: 0.5, reverb: 0.55 });
+  snap(pos = null) {
+    const out = this.output(pos, { gain: 0.5, reverb: 0.55 });
     this.noiseBurst(out, { f: 3800, q: 2.5, dur: 0.035, gain: 1 });
     this.tone(out, { f0: 2400, f1: 1800, dur: 0.02, gain: 0.3 });
   }
 
-  footstep(mode) {
+  footstep(mode, pos = null) {
     const loud = mode === 'run' ? 0.5 : mode === 'creep' ? 0.06 : 0.25;
-    const out = this.output(null, { gain: loud, reverb: 0.25 });
+    const out = this.output(pos, { gain: loud, reverb: 0.25 });
     this.noiseBurst(out, { type: 'lowpass', f: 350 + Math.random() * 200, q: 1, dur: 0.09, gain: 1 });
     this.noiseBurst(out, { type: 'highpass', f: 3500, q: 0.5, dur: 0.04, gain: 0.12 }); // salt crunch
   }
