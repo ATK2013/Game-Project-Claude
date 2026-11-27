@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#000000" />
   <title>ECHO</title>
   <style>
     :root {
@@ -143,6 +146,71 @@
     #spectate small { display: block; color: var(--dim); margin-top: 6px; font-size: 12px; }
     .team { color: #cfeef6; margin: -6px 0 14px; font-size: 14px; line-height: 1.6; }
     .team span { color: var(--dim); }
+    /* ---------- Mobile mode (body.mobile) ---------- */
+    body.mobile .desktop-only, body:not(.mobile) .mobile-only { display: none !important; }
+    body.mobile { overscroll-behavior: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+    body.mobile canvas { touch-action: none; }
+    #touch { position: fixed; inset: 0; z-index: 9; touch-action: none; }
+    .tbtn {
+      position: absolute; border-radius: 50%; min-width: 0; padding: 0; letter-spacing: 0.08em;
+      background: rgba(10, 30, 36, 0.35); border: 1px solid rgba(150, 220, 240, 0.35);
+      color: rgba(200, 245, 255, 0.85); font-size: 12px; touch-action: none;
+    }
+    .tbtn.down { background: rgba(110, 220, 255, 0.3); border-color: var(--cyan); }
+    #tClap { width: 92px; height: 92px; right: calc(28px + env(safe-area-inset-right)); bottom: 34px; font-size: 15px; }
+    #tSnap { width: 60px; height: 60px; right: calc(136px + env(safe-area-inset-right)); bottom: 26px; }
+    #tThrow { width: 60px; height: 60px; right: calc(46px + env(safe-area-inset-right)); bottom: 140px; font-size: 10px; }
+    #tPause { width: 44px; height: 44px; left: calc(14px + env(safe-area-inset-left)); top: 12px; font-size: 14px; }
+    #touch.spectate #tSnap, #touch.spectate #tThrow, #touch.spectate #stick { display: none; }
+    #stick { position: absolute; width: 0; height: 0; pointer-events: none; }
+    #stick::before {
+      content: ''; position: absolute; left: -60px; top: -60px; width: 120px; height: 120px; border-radius: 50%;
+      border: 1px solid rgba(150, 220, 240, 0.3); background: rgba(10, 30, 36, 0.2);
+    }
+    #stickKnob {
+      position: absolute; left: -24px; top: -24px; width: 48px; height: 48px; border-radius: 50%;
+      background: rgba(150, 220, 240, 0.25); border: 1px solid rgba(200, 245, 255, 0.6);
+    }
+    #stick[data-mode="creep"] #stickKnob { background: rgba(150, 220, 240, 0.1); }
+    #stick[data-mode="run"] #stickKnob { background: rgba(255, 140, 110, 0.35); border-color: #ffb09a; }
+    #stickLabel { position: absolute; left: -40px; width: 80px; top: 68px; text-align: center; font-size: 11px; letter-spacing: 0.2em; color: #9fc3cc; }
+    #rotate {
+      display: none; position: fixed; inset: 0; z-index: 60; background: #000; color: var(--cyan);
+      align-items: center; justify-content: center; flex-direction: column; gap: 14px; text-align: center; padding: 30px;
+      letter-spacing: 0.15em;
+    }
+    #rotate .icon { font-size: 54px; animation: tilt 2s ease-in-out infinite; }
+    @keyframes tilt { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+    @media (orientation: portrait) { body.mobile #rotate { display: flex; } }
+    /* move the HUD to the top so thumbs don't cover it */
+    body.mobile #forks { top: 12px; bottom: auto; left: calc(72px + env(safe-area-inset-left)); }
+    body.mobile #pebbles { top: 32px; bottom: auto; left: calc(72px + env(safe-area-inset-left)); }
+    body.mobile #noise { top: 12px; bottom: auto; right: calc(20px + env(safe-area-inset-right)); width: 140px; }
+    body.mobile #captions { bottom: auto; top: 58px; }
+    body.mobile #hint { top: 58px; }
+    body.mobile #spectate { top: 64px; }
+    #modeToggle { background: none; border: none; color: var(--dim); text-decoration: underline; font-size: 12px; padding: 4px; min-width: 0; letter-spacing: 0.05em; }
+    /* short screens (phones held sideways): squeeze the menus */
+    @media (max-height: 520px) {
+      h1 { font-size: 44px; }
+      h2 { font-size: 26px; margin-bottom: 6px; }
+      .pitch { font-size: 13px; margin: 4px 0 8px; }
+      .controls { font-size: 12px; margin: 2px 0 8px; gap: 1px 16px; }
+      button { padding: 7px 16px; }
+      button.big { font-size: 16px; padding: 10px 24px; margin-top: 4px; }
+      .note { margin-top: 8px; font-size: 12px; }
+      .screen { justify-content: flex-start; padding-top: 14px; }
+      .stats { margin: 6px 0 10px; }
+      #playerList { margin: 6px 0 2px; }
+      h1 { font-size: 38px; }
+      .screen { padding-top: 8px; }
+      .diffhelp { display: none; }
+      label.opt { margin: 4px; }
+      #title .row { margin: 4px 0; }
+      body.mobile .controls { grid-template-columns: auto auto auto auto; column-gap: 14px; }
+      .mpcol { gap: 4px; margin: 2px 0; }
+      #mpmenu > .pitch, #mpmenu .note { display: none; }
+    }
     #error { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 30px; color: #ff9988; z-index: 50; text-align: center; }
   </style>
 
@@ -165,7 +233,15 @@
     <div class="ring"></div><div class="ring r2"></div>
     <h1>ECHO</h1>
     <div class="pitch">In the dark, sound is sight. And something is listening.</div>
-    <div class="controls">
+    <div class="controls mobile-only">
+      <b>LEFT THUMB</b><span>move (small push = creep, full = run)</span>
+      <b>RIGHT THUMB</b><span>drag to look around</span>
+      <b>CLAP</b><span>big echo, very loud</span>
+      <b>SNAP</b><span>small echo, quiet</span>
+      <b>PEBBLE</b><span>throw a pebble (distraction)</span>
+      <b>II</b><span>pause</span>
+    </div>
+    <div class="controls desktop-only">
       <b>WASD</b><span>move</span>
       <b>MOUSE</b><span>look around</span>
       <b>SHIFT</b><span>run (fast, loud)</span>
@@ -189,6 +265,7 @@
     </div>
     <div id="titleNotice"></div>
     <div class="note">🎧 Headphones recommended — you'll need to hear where it is.</div>
+    <button id="modeToggle"></button>
   </div>
 
   <!-- ===== Multiplayer: create or join a room ===== -->
@@ -273,6 +350,16 @@
       <button id="leaveBtn2" class="mp-only">LEAVE ROOM</button>
     </div>
   </div>
+
+  <!-- ===== Touch controls (mobile mode) ===== -->
+  <div id="touch" class="hidden">
+    <div id="stick" class="hidden"><div id="stickKnob"></div><div id="stickLabel"></div></div>
+    <button id="tPause" class="tbtn">II</button>
+    <button id="tThrow" class="tbtn">PEBBLE</button>
+    <button id="tSnap" class="tbtn">SNAP</button>
+    <button id="tClap" class="tbtn">CLAP</button>
+  </div>
+  <div id="rotate"><div class="icon">📱</div><div>TURN YOUR DEVICE SIDEWAYS</div><div class="pitch">ECHO is played in landscape.</div></div>
 
   <!-- ===== Spectating (multiplayer, after you're out) ===== -->
   <div id="spectate" class="hidden"></div>

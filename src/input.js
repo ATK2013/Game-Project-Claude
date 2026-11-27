@@ -20,6 +20,8 @@ export class Input {
     this.mouseDX = 0;          // mouse movement since last frame
     this.mouseDY = 0;
     this.locked = false;       // is the mouse captured?
+    this.stick = null;         // mobile joystick: { x, y, mag } while a thumb is on it
+    this.mobile = false;       // mobile mode: no mouse capture
     this.handlers = {};        // action name -> list of functions
     this.addListeners();
   }
@@ -45,6 +47,7 @@ export class Input {
   }
 
   requestLock() {
+    if (this.mobile) return; // touch screens look with a thumb instead
     try {
       const p = this.canvas.requestPointerLock();
       if (p && p.catch) p.catch(() => {}); // browsers may refuse; that's OK

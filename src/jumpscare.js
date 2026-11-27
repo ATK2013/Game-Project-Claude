@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { buildHead } from './creature.js';
+import { vibrate } from './touch.js';
 
 const J = CONFIG.jumpscare;
 
@@ -213,6 +214,7 @@ export class Jumpscare {
     const n = this.nextChomp++;
     const final = n === CHOMP_TIMES.length - 1;
     this.audio.chomp(0.7 + n * 0.15);
+    vibrate(final ? [140, 40, 260] : 70); // phones buzz with every bite
     this.shake = 0.13 + n * 0.04;
     this.fovKick = 14;
     toothFlash.value = 1;

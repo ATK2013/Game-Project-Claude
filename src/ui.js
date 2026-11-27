@@ -82,7 +82,8 @@ export class UI {
   setSpectate(why, name) {
     const head = why === 'caught' ? 'YOU WERE CAUGHT' : 'YOU ESCAPED';
     const who = name ? `watching ${name}` : 'waiting for the others…';
-    const html = `${head} — ${who}<small>SPACE: next player · ESC: menu</small>`;
+    const keys = document.body.classList.contains('mobile') ? 'NEXT: next player · II: menu' : 'SPACE: next player · ESC: menu';
+    const html = `${head} — ${who}<small>${keys}</small>`;
     if ($('spectate').innerHTML !== html) $('spectate').innerHTML = html;
     $('spectate').classList.remove('hidden');
   }
