@@ -205,6 +205,8 @@ export const CONFIG = {
     creepZone: 0.45,       // push the stick less than this much = creep (silent)
     runZone: 0.92,         // push it further than this = run (loud)
     vibrate: true,         // short vibrations on claps and when it bites (Android)
+    lightAudio: true,      // simpler 3D sound on phones/tablets (stops crackling and clicking noises)
+    maxSounds: 20,         // most sounds playing at once on phones/tablets (extra ones are skipped)
   },
 
   // ---------------------------------------------------------------
