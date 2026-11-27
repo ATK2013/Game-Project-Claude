@@ -7,7 +7,7 @@
 import { CONFIG } from './config.js';
 
 const $ = (id) => document.getElementById(id);
-const SCREENS = ['title', 'pause', 'gameover', 'win', 'mpmenu', 'lobby'];
+const SCREENS = ['login', 'title', 'pause', 'gameover', 'win', 'mpmenu', 'lobby'];
 const SOLO_TITLES = { win: 'YOU ESCAPED', gameover: 'IT HEARD YOU' };
 const RING_LENGTH = 2 * Math.PI * 16; // circumference of the cooldown circle (r = 16)
 

@@ -214,6 +214,16 @@ export const CONFIG = {
   },
 
   // ---------------------------------------------------------------
+  // Sign-in screen (Google sign-in through Firebase, see auth.js)
+  // ---------------------------------------------------------------
+  login: {
+    enabled: true,         // show the sign-in screen when the game opens
+    allowGuest: true,      // offer "play as guest" (false = players must sign in)
+    analytics: true,       // Firebase / Google Analytics page statistics
+    firebaseVersion: '13.3.0', // Firebase JavaScript SDK version (loaded from Google's CDN)
+  },
+
+  // ---------------------------------------------------------------
   // Multiplayer (rooms with friends)
   // ---------------------------------------------------------------
   multiplayer: {

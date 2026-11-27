@@ -18,6 +18,29 @@ python3 -m http.server
 
 Then open **http://localhost:8000** in Chrome, Edge or Firefox. Headphones are recommended.
 
+## Signing in
+
+The game opens on a sign-in screen. Players can **sign in with Google** (their name and
+picture then show on the title screen, and their first name is used in multiplayer) or
+choose **Play as guest**. Sign-in uses Firebase Authentication (project `echo-2ecc2`, see
+`src/auth.js`). If Firebase can't load (offline, a blocked network, an ad blocker), playing
+as a guest still works.
+
+For Google sign-in to work, check two settings in the [Firebase console](https://console.firebase.google.com/):
+1. **Authentication → Sign-in method:** enable **Google**.
+2. **Authentication → Settings → Authorized domains:** add every address the game runs on.
+   `localhost` is there by default. For GitHub Pages add `atk2013.github.io` (and your own
+   domain, if you set one up). Without this, sign-in shows a message telling you which
+   address to add.
+
+Options are in the `login` section of `src/config.js`:
+- `allowGuest: false`: players must sign in.
+- `enabled: false`: no sign-in screen at all.
+- `analytics: false`: turn off Firebase / Google Analytics page statistics.
+
+The Firebase settings in `src/auth.js` are designed to be public, so they're not passwords.
+Firebase protects the project with its own rules and the authorized-domains list.
+
 ## Playing on a phone or tablet
 
 ECHO detects phones and tablets and switches to **mobile mode** automatically:
@@ -123,6 +146,7 @@ appears, how wide crevices are, and how high you jump are all in `src/config.js`
 | `src/lobby.js` | the "Play with friends" menu and the waiting room |
 | `src/multiplayer.js` | keeps everyone's game in sync during a match |
 | `src/touch.js` | mobile mode: phone detection and touch controls |
+| `src/auth.js` | Google sign-in through Firebase |
 | `src/features.js` | places crevices, fallen beams, gates, levers and bells in each map |
 | `src/mechanisms.js` | levers, gates and bells: pulling, opening, ringing |
 | `src/audio.js` | all sounds, synthesised with the Web Audio API |
