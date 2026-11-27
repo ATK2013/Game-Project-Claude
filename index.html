@@ -143,6 +143,17 @@
     #playerList { list-style: none; padding: 0; margin: 14px 0 6px; min-width: 260px; text-align: left; }
     #playerList li { padding: 6px 4px; border-bottom: 1px solid #16282d; }
     .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 10px; box-shadow: 0 0 8px currentColor; }
+    /* ---------- Sign-in screen ---------- */
+    #login { background: radial-gradient(circle at 50% 45%, rgba(0,20,26,0.55), rgba(0,0,0,0.94) 70%); }
+    #googleBtn { display: inline-flex; align-items: center; gap: 12px; font-size: 18px; padding: 13px 28px; margin-top: 18px; }
+    #googleBtn:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
+    #googleBtn .g { width: 22px; height: 22px; border-radius: 50%; background: #fff; color: #4285f4; font: bold 15px Arial, sans-serif; display: inline-flex; align-items: center; justify-content: center; }
+    #loginStatus { min-height: 20px; max-width: 520px; font-size: 14px; color: #9fc3cc; margin: 14px 0 4px; line-height: 1.5; }
+    #loginStatus.error { color: #ff9a8a; }
+    #account { font-size: 13px; color: var(--dim); margin-top: 6px; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; }
+    #account img { width: 22px; height: 22px; border-radius: 50%; }
+    #account b { color: var(--cyan); font-weight: normal; }
+    #account button { padding: 3px 10px; font-size: 12px; min-width: 0; letter-spacing: 0.1em; }
     #titleNotice { color: #ffb4a0; min-height: 18px; font-size: 14px; margin-top: 8px; }
     #spectate {
       position: fixed; left: 0; right: 0; top: 28px; text-align: center; z-index: 14; pointer-events: none;
@@ -234,8 +245,19 @@
   </script>
 </head>
 <body>
+  <!-- ===== Sign-in screen (first thing you see) ===== -->
+  <div id="login" class="screen hidden">
+    <div class="ring"></div><div class="ring r2"></div>
+    <h1>ECHO</h1>
+    <div class="pitch">In the dark, sound is sight. And something is listening.</div>
+    <button id="googleBtn" disabled><span class="g">G</span> SIGN IN WITH GOOGLE</button>
+    <div id="loginStatus">Connecting…</div>
+    <button id="guestBtn">PLAY AS GUEST</button>
+    <div class="note">🎧 Headphones recommended.</div>
+  </div>
+
   <!-- ===== Title screen ===== -->
-  <div id="title" class="screen">
+  <div id="title" class="screen hidden">
     <div class="ring"></div><div class="ring r2"></div>
     <h1>ECHO</h1>
     <div class="pitch">In the dark, sound is sight. And something is listening.</div>
@@ -271,6 +293,7 @@
       <button class="big" id="startBtn">ENTER THE MINE</button>
       <button class="big" id="mpBtn">PLAY WITH FRIENDS</button>
     </div>
+    <div id="account"></div>
     <div id="titleNotice"></div>
     <div class="note">🎧 Headphones recommended — you'll need to hear where it is.</div>
     <button id="modeToggle"></button>

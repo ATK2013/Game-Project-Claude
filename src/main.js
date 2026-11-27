@@ -23,6 +23,7 @@ import { Input } from './input.js';
 import { Lobby } from './lobby.js';
 import { Multiplayer, spawnOffset } from './multiplayer.js';
 import { detectMobile, TouchControls, vibrate, enterFullscreen } from './touch.js';
+import { initAuth, login, logout, onUser, loginErrorText } from './auth.js';
 
 const ACT = CONFIG.actions;
 const PC = CONFIG.pulse;
@@ -245,7 +246,96 @@ function startAttract(screen = 'title') {
   game.timers.attract = 0.5;
   ui.setFear(0);
   fx.uniforms.uFear.value = 0;
-  ui.show(screen);
+  ui.show(screen === 'title' ? menuScreen() : screen);
+}
+
+// ---------------------------------------------------------------------
+// Sign-in (Google, through Firebase — see auth.js)
+// ---------------------------------------------------------------------
+const account = { user: null, guest: false, available: false };
+
+// The main menu is the sign-in screen until you sign in (or choose guest).
+function menuScreen() {
+  return CONFIG.login.enabled && !account.user && !account.guest ? 'login' : 'title';
+}
+
+function setLoginStatus(text, isError = false) {
+  const el = document.getElementById('loginStatus');
+  el.textContent = text;
+  el.classList.toggle('error', isError);
+}
+
+async function setupLogin() {
+  document.getElementById('guestBtn').classList.toggle('hidden', !CONFIG.login.allowGuest);
+  if (!CONFIG.login.enabled) return;
+  account.available = await initAuth();
+  const google = document.getElementById('googleBtn');
+  if (!account.available) {
+    setLoginStatus(CONFIG.login.allowGuest
+      ? 'Google sign-in could not load (offline or blocked). You can still play as a guest.'
+      : 'Google sign-in could not load. Check your internet connection and reload.', true);
+    return;
+  }
+  google.disabled = false;
+  setLoginStatus('');
+  onUser((user) => {
+    account.user = user;
+    if (user) useNameFrom(user);
+    updateAccountBar();
+    // signing in (or out) while a menu is open: switch between sign-in and title screens
+    if (game.state === 'title') ui.show(menuScreen());
+  });
+}
+
+async function signIn() {
+  setLoginStatus('Opening Google sign-in…');
+  try {
+    await login();
+    setLoginStatus('');
+  } catch (err) {
+    const text = loginErrorText(err);
+    setLoginStatus(text, !!text);
+  }
+}
+
+async function signOutNow() {
+  account.guest = false;
+  if (account.user) await logout().catch(() => {});
+  account.user = null;
+  updateAccountBar();
+  if (game.state === 'title') ui.show(menuScreen());
+}
+
+// Use your Google first name for multiplayer, unless you've typed one.
+function useNameFrom(user) {
+  const box = document.getElementById('mpName');
+  if (!box.value && user.displayName) box.value = user.displayName.split(' ')[0].slice(0, 14);
+}
+
+// "Signed in as Alex · SIGN OUT" (or "Playing as guest · SIGN IN") on the title screen.
+function updateAccountBar() {
+  const bar = document.getElementById('account');
+  bar.innerHTML = '';
+  if (!CONFIG.login.enabled) return;
+  const btn = document.createElement('button');
+  if (account.user) {
+    if (account.user.photoURL) {
+      const img = document.createElement('img');
+      img.src = account.user.photoURL;
+      img.alt = '';
+      img.referrerPolicy = 'no-referrer';
+      bar.appendChild(img);
+    }
+    const who = document.createElement('span');
+    who.append('Signed in as ', Object.assign(document.createElement('b'), { textContent: account.user.displayName || account.user.email || 'player' }));
+    bar.appendChild(who);
+    btn.textContent = 'SIGN OUT';
+  } else {
+    bar.appendChild(document.createTextNode('Playing as guest'));
+    btn.textContent = 'SIGN IN';
+  }
+  btn.addEventListener('click', signOutNow);
+  bar.appendChild(btn);
 }
 
 function updateAttract(dt) {
@@ -688,7 +778,7 @@ const lobby = new Lobby(ui, {
   enterRoom,
   start: () => game.net.hostStart(game.difficultyName),
   leave: () => leaveRoom(),
-  back: () => ui.show('title'),
+  back: () => ui.show(menuScreen()),
 });
 
 function wireButtons() {
@@ -701,6 +791,8 @@ function wireButtons() {
   on('resumeBtn', resume);
   for (const id of ['quitBtn', 'menuBtn1', 'menuBtn2']) on(id, () => { audio.resume(); startAttract(); });
   on('mpBtn', () => { audio.init(); if (MOBILE) enterFullscreen(); lobby.notice(''); lobby.openMenu(); });
+  on('googleBtn', signIn);
+  on('guestBtn', () => { account.guest = true; updateAccountBar(); ui.show('title'); });
   setupModeToggle();
   for (const id of ['lobbyBtn1', 'lobbyBtn2']) on(id, () => game.net && game.net.hostBackToLobby());
   for (const id of ['leaveBtn1', 'leaveBtn2', 'leaveBtn3']) on(id, () => leaveRoom());
@@ -738,4 +830,5 @@ input.on('canvasclick', () => { if (game.state === 'playing' || game.state === '
 
 wireButtons();
 startAttract();
+setupLogin();
 frame();
