@@ -207,7 +207,8 @@
     body.mobile #pebbles { top: 32px; bottom: auto; left: calc(72px + env(safe-area-inset-left)); }
     body.mobile #darts { top: 52px; bottom: auto; left: calc(72px + env(safe-area-inset-left)); }
     body.mobile #noise { top: 12px; bottom: auto; right: calc(20px + env(safe-area-inset-right)); width: 140px; }
-    body.mobile #captions { bottom: auto; top: 58px; }
+    body.mobile #captions { bottom: auto; top: 58px; width: min(62vw, 460px); }
+    body.mobile .caption { font-size: 12px; padding: 3px 10px; line-height: 1.35; }
     body.mobile #hint { top: 58px; }
     body.mobile #spectate { top: 64px; }
     #modeToggle { background: none; border: none; color: var(--dim); text-decoration: underline; font-size: 12px; padding: 4px; min-width: 0; letter-spacing: 0.05em; }
