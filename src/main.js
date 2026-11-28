@@ -142,6 +142,9 @@ const mats = {
   // levers: rusty orange, with a very faint glow so you can spot them up close
   leverSurface: pulses.makeMaterial('surface', { tint: [1, 0.45, 0.2], tintMix: 0.7 }),
   leverLine: pulses.makeMaterial('line', { tint: [1, 0.45, 0.2], tintMix: 0.7, selfGlow: 0.03, lineBoost: 2 }),
+  // tranquilizer darts: acid yellow-green, faintly glowing
+  dartSurface: pulses.makeMaterial('surface', { tint: [0.8, 1, 0.25], tintMix: 0.7 }),
+  dartLine: pulses.makeMaterial('line', { tint: [0.8, 1, 0.25], tintMix: 0.7, selfGlow: 0.04, lineBoost: 2.2 }),
   creatureEye: pulses.makeMaterial('eye'), // its body is pitch black: only the eyes glow
   // jumpscare face: black, a barely-there grey outline, blazing white eyes
   scareLine: pulses.makeMaterial('line', { tint: [0.6, 0.65, 0.7], tintMix: 1, forceLit: 0.07 }),
@@ -174,6 +177,7 @@ const game = {
 
   get myId() { return this.net ? this.net.myId : 'me'; },
   get myColor() { return this.net ? this.net.colorOf(this.myId) : PC.playerColor; },
+  dartHint: MOBILE ? 'tap DART to fire' : 'press R to fire',
   nameOf(id) { return this.net ? this.net.nameOf(id) : 'You'; },
 
   // A sound happened somewhere: the creature may hear it.
@@ -356,6 +360,7 @@ function newGame(seed) {
   game.difficulty = CONFIG.difficulty[game.difficultyName];
   game.stats = { time: 0, claps: 0, hunted: 0, forks: 0 };
   game.pebbles = CONFIG.player.startPebbles;
+  game.darts = CONFIG.darts.startWith;
   game.elevatorPowered = false;
   game.noise = 0;
   game.localOut = false;
@@ -373,6 +378,7 @@ function newGame(seed) {
   audio.restoreAmbience();
   ui.setForks(0, CONFIG.goal.forkCount);
   ui.setPebbles(game.pebbles);
+  ui.setDarts(game.darts);
   ui.setFear(0);
   const hint = document.getElementById('hint');
   hint.textContent = MOBILE ? 'Tap CLAP to see. Every clap tells it where you are.'
@@ -486,6 +492,13 @@ function playerFx(kind, pos, s = 1, who = game.myId) {
     audio.crash(pos);
     hear(ACT.fallLoudness);
     game.caption(mine ? '[you slip into a crevice — CRASH]' : `[${game.nameOf(who)} fell into a crevice — {dir}]`, mine ? null : pos, true);
+  } else if (kind === 'dart') {
+    audio.dartFire(at);
+    hear(CONFIG.darts.fireLoudness);
+  } else if (kind === 'dartMiss') {
+    light({ radius: 1.8, strength: 0.8, color: PC.objectColor });
+    audio.dartHit(pos);
+    if (mine) game.caption('[the dart snaps against the rock — missed]');
   } else if (kind === 'land') {
     light({ radius: ACT.pebbleRadius * s, strength: 0.9, color: PC.objectColor });
     audio.pebble(pos, s);
@@ -515,6 +528,7 @@ function updateFear(dt) {
   const d = Math.hypot(c.position.x - game.player.position.x, c.position.z - game.player.position.z);
   const near = Math.max(0, 1 - d / A.heartbeatDistance);
   const hunted = c.state === HUNT ? 0.25 : 0;
+  if (c.state === 'STUNNED') { ui.setFear(0); fx.uniforms.uFear.value = 0; return; } // a moment to breathe
   ui.setFear(Math.min(0.9, near * near * 0.9 + hunted * near));
   fx.uniforms.uFear.value = near * near;
   if (near <= 0) return;
@@ -717,6 +731,7 @@ function updateWorld(dt) {
 }
 
 function checkCaught() {
+  if (game.creature.state === 'STUNNED') return; // out cold: it can't grab anyone
   const p = game.player.position, c = game.creature.position;
   if (Math.hypot(p.x - c.x, p.z - c.z) < CONFIG.creature.catchRadius) startJumpscare();
 }
@@ -726,7 +741,10 @@ function updateHud(dt) {
   // next to a lever: show "E — PULL LEVER" (mobile: the PEBBLE button says PULL)
   const nearLever = game.items.mech.near >= 0;
   ui.setPrompt(nearLever ? (MOBILE ? 'PULL THE LEVER' : 'E — PULL THE LEVER') : '');
-  if (touch) touch.setThrowLabel(nearLever ? 'PULL' : 'PEBBLE');
+  if (touch) {
+    touch.setThrowLabel(nearLever ? 'PULL' : 'PEBBLE');
+    touch.setDarts(game.darts); // the DART button only shows when you have one
+  }
   ui.setCooldown(Math.min(1, 1 - (t.clapReady - game.time) / t.clapLength));
   game.noise = Math.max(0, game.noise - CONFIG.ui.noiseDecay * dt);
   ui.setNoise(game.noise);
@@ -815,6 +833,7 @@ input.on('clap', clap);
 input.on('snap', snap);
 input.on('throw', throwOrPull);
 input.on('jump', jump);
+input.on('dart', () => { if (game.state === 'playing') game.items.fireDart(); });
 input.on('pause', () => {
   if (game.state === 'playing' || game.state === 'spectating') pause();
   // ignore the same Esc press that just released the mouse (some browsers send both)

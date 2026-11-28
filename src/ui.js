@@ -47,6 +47,10 @@ export class UI {
 
   setForks(n, total) { $('forks').textContent = `TUNING FORKS  ${n}/${total}`; }
   setPebbles(n) { $('pebbles').textContent = `PEBBLES  ${n}`; }
+  setDarts(n) {
+    $('darts').textContent = `DARTS  ${n}`;
+    $('darts').classList.toggle('has', n > 0);
+  }
 
   // level: 0..1
   setNoise(level) {

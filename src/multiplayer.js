@@ -19,7 +19,7 @@ import { CONFIG } from './config.js';
 import { makeEchoObject } from './pulse.js';
 
 const M = CONFIG.multiplayer;
-const CREATURE_STATES = ['WANDER', 'INVESTIGATE', 'HUNT'];
+const CREATURE_STATES = ['WANDER', 'INVESTIGATE', 'HUNT', 'STUNNED'];
 const round = (v) => Math.round(v * 100) / 100;       // smaller messages
 const toVec = (a) => new THREE.Vector3(a[0], a[1], a[2]);
 const toArr = (v) => [round(v.x), round(v.y), round(v.z)];
@@ -271,7 +271,7 @@ export class Multiplayer {
   // ------------------------------------------------------------------
   checkCatches() {
     const c = this.game.creature;
-    if (!c || c.feeding > 0) return;
+    if (!c || c.feeding > 0 || c.state === 'STUNNED') return;
     for (const [id, st] of this.status) {
       if (st !== 'alive') continue;
       const pos = id === this.myId ? this.game.player.position : (this.remotes.get(id) || {}).target;

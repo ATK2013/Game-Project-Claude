@@ -4,7 +4,8 @@
 //    • left thumb  — a joystick that appears where you touch.
 //                    Small push = creep (silent), normal = walk, full = run.
 //    • right thumb — drag to look around.
-//    • buttons     — CLAP, SNAP, JUMP, PEBBLE (says PULL next to a lever) and pause.
+//    • buttons     — CLAP, SNAP, JUMP, PEBBLE (says PULL next to a lever),
+//                    DART (when you have one) and pause.
 //  The controls feed the same Input object the keyboard and mouse use.
 // =====================================================================
 import { CONFIG } from './config.js';
@@ -77,7 +78,16 @@ export class TouchControls {
     this.button('tSnap', 'snap');
     this.button('tThrow', 'throw');
     this.button('tJump', 'jump');
+    this.button('tDart', 'dart');
     this.button('tPause', 'pause');
+  }
+
+  // The DART button only appears while you're carrying darts.
+  setDarts(n) {
+    if (this.darts === n) return;
+    this.darts = n;
+    $('tDart').classList.toggle('hidden', n <= 0);
+    $('tDart').textContent = n > 1 ? `DART ×${n}` : 'DART';
   }
 
   // The PEBBLE button turns into PULL when you stand next to a lever.

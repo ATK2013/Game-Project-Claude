@@ -51,6 +51,7 @@ ECHO detects phones and tablets and switches to **mobile mode** automatically:
 | Right thumb | drag to look around |
 | CLAP / SNAP / JUMP | the same as F / Q / Space on a keyboard |
 | PEBBLE (says PULL next to a lever) | the same as E |
+| DART (appears when you have one) | the same as R |
 | II | pause |
 
 - Hold the device sideways. The game goes fullscreen and locks to landscape where the browser allows it.
@@ -106,6 +107,7 @@ Rooms then connect the tabs to each other, with no internet needed.
 | Q / right click | **snap**: small quiet pulse (~5 m) |
 | Space | **jump** over crevices and fallen beams |
 | E | pull a lever when you stand next to one, otherwise throw a pebble (a distraction) |
+| R | fire a tranquilizer dart (if you've found one) |
 | Esc | pause |
 | Space or F (after being caught) | watch a different friend (multiplayer) |
 
@@ -121,6 +123,11 @@ All keys can be changed in the `keys` section of `src/config.js`.
 - **Iron gates and gate levers:** gates block some tunnels, and the creature can't get through
   a closed gate either. Each gate's lever (rusty orange, glowing faintly) is always somewhere
   you can reach. Pull it again to close the gate, maybe in the creature's face.
+- **Tranquilizer darts:** two lie somewhere in each mine, glowing faintly yellow-green.
+  Walk over one to pick it up, then press **R** to fire where you aim (up to 14 m). It's dark,
+  so clap first to see the creature. A hit drops it to its knees for **15 seconds**: it can't
+  hear, hunt or catch anyone. With 3 seconds left it starts twitching (that's your warning),
+  and when it wakes it heads straight for where the dart came from. A miss is lost.
 - **Bell levers:** ring an old mine bell far away. It's very loud, so the creature goes to look.
   Use it to lure the creature away. It needs 25 seconds before it works again.
 

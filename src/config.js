@@ -96,7 +96,22 @@ export const CONFIG = {
     clap: ['KeyF'],        // clap (left mouse button also claps)
     snap: ['KeyQ'],        // snap (right mouse button also snaps)
     throw: ['KeyE'],       // throw a pebble, or pull a lever when you stand next to one
+    dart: ['KeyR'],        // fire a tranquilizer dart
     pause: ['Escape'],     // pause
+  },
+
+  // ---------------------------------------------------------------
+  // Tranquilizer darts: pick them up, hit the creature, it's out cold
+  // ---------------------------------------------------------------
+  darts: {
+    pickups: 2,            // darts lying around each mine
+    startWith: 0,          // darts you start the game with
+    max: 3,                // most darts you can carry
+    stunTime: 15,          // seconds the creature stays down after a hit
+    range: 14,             // how far a dart flies (metres)
+    aimForgiveness: 0.55,  // how close to the creature's body a dart must pass to count (metres)
+    fireLoudness: 6,       // how far the creature hears you fire (it's quiet)
+    cooldown: 0.8,         // seconds between shots
   },
 
   // ---------------------------------------------------------------
