@@ -158,7 +158,7 @@ export class Mechanisms {
     g.audio.gateGrind(gate.pos);
     g.pulses.emit({ origin: gate.pos, radius: 6, color: CONFIG.pulse.objectColor, strength: 0.8 });
     g.emitSound({ pos: gate.pos, loudness: ACT.gateLoudness, fromPlayer: false });
-    if (g.creature && g.creature.replan) g.creature.replan(); // the way may have opened or closed
+    for (const c of g.creatures) c.replan(); // the way may have opened or closed
     g.caption(`[an iron gate grinds ${gate.open ? 'open' : 'shut'} — {dir}, {dist}]`, gate.pos, true);
   }
 

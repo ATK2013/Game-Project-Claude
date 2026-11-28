@@ -164,7 +164,10 @@ const game = {
   state: 'title',
   time: 0,
   scene, camera, pulses, audio, ui, mats, input, jumpscare,
-  level: null, world: null, player: null, creature: null, items: null,
+  level: null, world: null, player: null, items: null,
+  creature: null,     // the Listener (always there)
+  creatures: [],      // every creature in this run: the Listener first, then any others
+  CONFIG,             // (handy for trying settings live from the browser console)
   difficultyName: CONFIG.defaultDifficulty,
   difficulty: CONFIG.difficulty[CONFIG.defaultDifficulty],
   stats: null,
@@ -184,12 +187,17 @@ const game = {
   // Only the "thinking" creature listens (alone, or on the multiplayer host).
   emitSound(ev) {
     if (ev.fromPlayer && ev.mine) this.noise = Math.max(this.noise, Math.min(1, ev.loudness / 30));
-    if (!this.creature) return;
     const thinking = this.net ? this.net.isHost && this.net.inGame : this.state === 'playing';
-    if (thinking) this.creature.hear(ev);
+    if (thinking) for (const c of this.creatures) c.hear(ev);
   },
 
   playerFx(kind, pos, s, who) { playerFx(kind, pos, s, who); },
+
+  // Where the players still in the mine are (for the Mimic's lunge).
+  livePlayers() {
+    if (this.net) return this.net.alivePositions();
+    return this.localOut || this.state !== 'playing' ? [] : [this.player.position];
+  },
 
   // Ask to pick something up (see Items.tryClaim).
   claim(kind, i, extra) {
@@ -242,6 +250,7 @@ function startAttract(screen = 'title') {
   if (game.items) game.items.dispose();
   game.items = null;
   game.creature = null;
+  game.creatures = [];
   game.localOut = false;
   buildWorld(new Level());
   game.player = new Player(camera, game.level);
@@ -372,7 +381,11 @@ function newGame(seed) {
   if (game.net) placeForMultiplayer();
   audio.wallsTo = (pos) => game.level.rockBetween(camera.position, pos);
   game.items = new Items(game);
+  // the Listener, plus any other creatures this mine rolled (see CONFIG.species)
   game.creature = new Creature(game);
+  game.creatures = [game.creature, ...game.level.extraCreatures.map((e, i) =>
+    new Creature(game, { type: e.type, cell: e.cell, index: i + 1 }))];
+  if (game.creatures.length > 1) console.log('[ECHO] also in the mine:', game.level.extraCreatures.map((e) => e.type).join(', '));
   game.timers = { clapReady: 0, clapLength: 1, snapReady: 0, drip: 2, heartbeat: 0, hint: 9 };
   if (!game.drone) game.drone = audio.startDrone();
   audio.restoreAmbience();
@@ -522,13 +535,25 @@ function updateDrips(dt) {
   pulses.emit({ origin: pos, radius: 0.9, color: PC.playerColor, strength: 0.5, fade: 1.0, speed: 3 });
 }
 
+// The closest creature that's awake (or null).
+function nearestCreature() {
+  const p = game.player.position;
+  let best = null, bestD = Infinity;
+  for (const c of game.creatures) {
+    if (c.state === 'STUNNED') continue;
+    const d = Math.hypot(c.position.x - p.x, c.position.z - p.z);
+    if (d < bestD) { bestD = d; best = c; }
+  }
+  return best;
+}
+
 // Heartbeat + red vignette get stronger the closer the creature is.
 function updateFear(dt) {
-  const c = game.creature, A = CONFIG.audio;
+  const c = nearestCreature(), A = CONFIG.audio;
+  if (!c) { ui.setFear(0); fx.uniforms.uFear.value = 0; return; }
   const d = Math.hypot(c.position.x - game.player.position.x, c.position.z - game.player.position.z);
   const near = Math.max(0, 1 - d / A.heartbeatDistance);
   const hunted = c.state === HUNT ? 0.25 : 0;
-  if (c.state === 'STUNNED') { ui.setFear(0); fx.uniforms.uFear.value = 0; return; } // a moment to breathe
   ui.setFear(Math.min(0.9, near * near * 0.9 + hunted * near));
   fx.uniforms.uFear.value = near * near;
   if (near <= 0) return;
@@ -542,18 +567,20 @@ function updateFear(dt) {
 // ---------------------------------------------------------------------
 // Losing: jumpscare, then Game Over (alone) or spectating (multiplayer)
 // ---------------------------------------------------------------------
-function startJumpscare() {
+// catcher = the creature that caught you
+function startJumpscare(catcher = game.creature) {
+  game.caughtBy = catcher.sp.name;
   if (game.state === 'paused') ui.show(null);
   game.state = 'jumpscare';
   game.stats.forks = game.items.collected;
   if (!game.net) game.items.dispose(); // alone the world stops; with friends it goes on
-  game.creature.body.root.visible = false; // its body would block the view of the face
+  catcher.body.root.visible = false; // its body would block the view of the face
   jumpscare.start(); // the whole sequence lives in jumpscare.js
 }
 
 function afterJumpscare() {
   if (!game.net) return gameOver();
-  game.creature.body.root.visible = true;
+  for (const c of game.creatures) c.body.root.visible = true;
   ui.setBlack(false);
   if (game.pendingEnd) showTeamResult(game.pendingEnd);
   else startSpectating('caught');
@@ -566,6 +593,7 @@ function gameOver() {
   fx.uniforms.uFear.value = 0;
   ui.setStats('gameover', game.stats);
   ui.setTeamResult('gameover', null);
+  ui.setCaughtBy(game.caughtBy || 'the Listener');
   ui.show('gameover');
   ui.shudder('gameover');
   input.exitLock();
@@ -647,9 +675,9 @@ const mpHooks = {
     if (game.state === 'jumpscare') game.pendingEnd = result; // show it after the scare
     else showTeamResult(result);
   },
-  caughtMe() {
+  caughtMe(index = 0) {
     game.localOut = true;
-    startJumpscare();
+    startJumpscare(game.creatures[index] || game.creature);
   },
   escapedMe() { escapedMultiplayer(); },
   closed(reason) { leaveRoom(reason); },
@@ -721,7 +749,7 @@ function updateWorld(dt) {
   game.stats.time += dt;
   game.items.update(dt);
   if (!game.net && game.state !== 'playing') return; // alone: we may have just won
-  game.creature.update(dt);
+  for (const c of game.creatures) c.update(dt);
   if (game.net) game.net.update(dt);
   else checkCaught();
   if (game.state === 'won' || game.state === 'dead') return;
@@ -731,9 +759,11 @@ function updateWorld(dt) {
 }
 
 function checkCaught() {
-  if (game.creature.state === 'STUNNED') return; // out cold: it can't grab anyone
-  const p = game.player.position, c = game.creature.position;
-  if (Math.hypot(p.x - c.x, p.z - c.z) < CONFIG.creature.catchRadius) startJumpscare();
+  const p = game.player.position;
+  for (const c of game.creatures) {
+    if (c.state === 'STUNNED' || c.feeding > 0) continue; // out cold: it can't grab anyone
+    if (Math.hypot(p.x - c.position.x, p.z - c.position.z) < CONFIG.creature.catchRadius) return startJumpscare(c);
+  }
 }
 
 function updateHud(dt) {

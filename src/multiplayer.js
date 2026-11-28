@@ -84,8 +84,8 @@ export class Multiplayer {
       case 'fx': this.onFx(msg, from); break;
       case 'claim': if (this.isHost) this.handleClaim(from, msg); break;
       case 'claimed': this.game.items.applyClaim(msg.kind, msg.i, msg.by, msg); break;
-      case 'cfx': this.game.creature.applyFx(msg.kind, toVec(msg.pos)); break;
-      case 'caught': this.onCaught(msg.id); break;
+      case 'cfx': { const c = this.game.creatures[msg.c || 0]; if (c) c.applyFx(msg.kind, toVec(msg.pos)); break; }
+      case 'caught': this.onCaught(msg.id, msg.c || 0); break;
       case 'escaped': this.onEscaped(msg.id); break;
       default: break;
     }
@@ -184,9 +184,10 @@ export class Multiplayer {
   sendSnapshot() {
     const players = { [this.myId]: this.myState() };
     for (const [id, r] of this.remotes) if (r.state) players[id] = r.state;
-    const c = this.game.creature;
-    const creature = [round(c.position.x), round(c.position.z), round(c.yaw), CREATURE_STATES.indexOf(c.state)];
-    this.room.send({ t: 'snap', players, creature, hunted: this.game.stats.hunted });
+    // every creature: [x, z, yaw, state]
+    const creatures = this.game.creatures.map((c) =>
+      [round(c.position.x), round(c.position.z), round(c.yaw), CREATURE_STATES.indexOf(c.state)]);
+    this.room.send({ t: 'snap', players, creatures, hunted: this.game.stats.hunted });
   }
 
   // Friend: apply the host's snapshot.
@@ -194,8 +195,10 @@ export class Multiplayer {
     for (const [id, s] of Object.entries(msg.players)) {
       if (id !== this.myId) this.setTarget(this.remotes.get(id), s);
     }
-    const [x, z, yaw, state] = msg.creature;
-    this.game.creature.setNetState(x, z, yaw, CREATURE_STATES[state]);
+    msg.creatures.forEach(([x, z, yaw, state], i) => {
+      const c = this.game.creatures[i];
+      if (c) c.setNetState(x, z, yaw, CREATURE_STATES[state]);
+    });
     this.game.stats.hunted = msg.hunted;
   }
 
@@ -236,9 +239,21 @@ export class Multiplayer {
     this.game.playerFx(msg.kind, toVec(msg.pos), msg.s, msg.id);
   }
 
-  // Host: the creature clicked / stepped / shrieked — show it to everyone.
-  sendCreatureFx(kind, pos) {
-    if (this.isHost && this.inGame) this.room.send({ t: 'cfx', kind, pos: toArr(pos) });
+  // Host: a creature clicked / stepped / shrieked — show it to everyone.
+  // c = which creature (its index in game.creatures).
+  sendCreatureFx(kind, pos, c = 0) {
+    if (this.isHost && this.inGame) this.room.send({ t: 'cfx', kind, pos: toArr(pos), c });
+  }
+
+  // Host: where every player still in the mine is (for the Mimic's lunge).
+  alivePositions() {
+    const out = [];
+    for (const [id, st] of this.status) {
+      if (st !== 'alive') continue;
+      const pos = id === this.myId ? this.game.player.position : (this.remotes.get(id) || {}).target;
+      if (pos) out.push(pos);
+    }
+    return out;
   }
 
   // ------------------------------------------------------------------
@@ -270,26 +285,28 @@ export class Multiplayer {
   // Getting caught (host decides) and the end of the game
   // ------------------------------------------------------------------
   checkCatches() {
-    const c = this.game.creature;
-    if (!c || c.feeding > 0 || c.state === 'STUNNED') return;
-    for (const [id, st] of this.status) {
-      if (st !== 'alive') continue;
-      const pos = id === this.myId ? this.game.player.position : (this.remotes.get(id) || {}).target;
-      if (pos && Math.hypot(pos.x - c.position.x, pos.z - c.position.z) < CONFIG.creature.catchRadius) {
-        this.status.set(id, 'caught');
-        c.feed(M.feedTime);        // it stops to "feed" — a chance for the others
-        this.room.send({ t: 'caught', id });
-        this.onCaught(id);
-        this.checkEnd();
-        return;
+    this.game.creatures.forEach((c, index) => {
+      if (c.feeding > 0 || c.state === 'STUNNED') return;
+      for (const [id, st] of this.status) {
+        if (st !== 'alive') continue;
+        const pos = id === this.myId ? this.game.player.position : (this.remotes.get(id) || {}).target;
+        if (pos && Math.hypot(pos.x - c.position.x, pos.z - c.position.z) < CONFIG.creature.catchRadius) {
+          this.status.set(id, 'caught');
+          c.feed(M.feedTime);        // it stops to "feed" — a chance for the others
+          this.room.send({ t: 'caught', id, c: index });
+          this.onCaught(id, index);
+          this.checkEnd();
+          return;
+        }
       }
-    }
+    });
   }
 
-  onCaught(id) {
+  // c = which creature caught them
+  onCaught(id, c = 0) {
     const r = this.remotes.get(id);
     if (r) r.out = true;
-    if (id === this.myId) this.hooks.caughtMe();
+    if (id === this.myId) this.hooks.caughtMe(c);
     else this.game.caption(`[${this.nameOf(id)} was caught]`, null, true);
   }
 

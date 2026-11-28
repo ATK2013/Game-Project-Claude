@@ -149,6 +149,12 @@ export class UI {
   // Red vignette that creeps in as the creature gets closer. amount 0..1
   setFear(amount) { $('vignette').style.opacity = amount.toFixed(3); }
 
+  // "The Listener found you in the dark." (or a Crawler, the Mimic...)
+  setCaughtBy(name) {
+    const line = `${name.charAt(0).toUpperCase()}${name.slice(1)} found you in the dark.`;
+    document.querySelector('#gameover .pitch').textContent = line;
+  }
+
   setStats(screen, stats) {
     const m = Math.floor(stats.time / 60), s = Math.floor(stats.time % 60);
     const time = `${m}:${String(s).padStart(2, '0')}`;
