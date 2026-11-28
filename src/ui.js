@@ -36,7 +36,26 @@ export class UI {
     for (const s of SCREENS) $(s).classList.toggle('hidden', s !== name);
     $('hud').classList.toggle('hidden', name !== null);
     $('spectate').classList.add('hidden');
-    if (name !== null) this.captionBox.innerHTML = '';
+    if (name !== null) {
+      this.captionBox.innerHTML = '';
+      this.hideSpawnInfo();
+    }
+  }
+
+  // "IN THE MINE TONIGHT": which creatures are in this run.
+  // list = [{ name, blurb, rare }]. Fades out after a few seconds.
+  showSpawnInfo(list) {
+    const box = $('spawnInfo');
+    box.innerHTML = '<div class="head">IN THE MINE TONIGHT</div>' + list.map((c) =>
+      `<div class="who"><b>${escapeHtml(c.name.toUpperCase())}</b> — ${escapeHtml(c.blurb)}${c.rare ? ' <span class="rare">· RARE</span>' : ''}</div>`).join('');
+    box.classList.remove('hidden', 'fade');
+    clearTimeout(this.spawnTimer);
+    this.spawnTimer = setTimeout(() => box.classList.add('fade'), CONFIG.ui.creatureIntroTime * 1000);
+  }
+
+  hideSpawnInfo() {
+    clearTimeout(this.spawnTimer);
+    $('spawnInfo').classList.add('hidden');
   }
 
   // fraction: 0 = just used, 1 = ready
@@ -127,7 +146,7 @@ export class UI {
   // Hide or show the in-game HUD and captions.
   setHud(on) {
     $('hud').classList.toggle('hidden', !on);
-    if (!on) this.captionBox.innerHTML = '';
+    if (!on) { this.captionBox.innerHTML = ''; this.hideSpawnInfo(); }
   }
 
   // Instantly cover the screen in black (true), or fade the black away (false).

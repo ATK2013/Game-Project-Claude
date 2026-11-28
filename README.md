@@ -126,7 +126,9 @@ The **Listener** is always in the mine. Each run, other creatures may join it:
 | **Mimic** | 20% | Barely moves. It **fakes sounds to lure you**: a clap (with a pulse in your colour), footsteps, or a tuning fork's hum (with a gold ripple). Get within 3 m and it lunges, faster than you can run. |
 | **Shade** | 8% | Completely silent: no clicks, no footsteps, no breathing, and its eyes never glow on their own. You only see it when a pulse washes over it. |
 
-Darts stun whichever creature they hit, and any of them can catch you (the Game Over screen
+When you enter the mine, an **IN THE MINE TONIGHT** list shows for a few seconds which
+creatures are down there this run (rare ones are marked RARE). Darts stun whichever creature
+they hit, and any of them can catch you (the Game Over screen
 says which). The chances, speeds and hearing of each one are in the `species` section of
 `src/config.js`. Set a `chance` to `1` to meet that creature every time, or `0` to remove it.
 
