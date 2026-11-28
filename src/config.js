@@ -105,7 +105,7 @@ export const CONFIG = {
   // ---------------------------------------------------------------
   darts: {
     pickups: 2,            // darts lying around each mine
-    startWith: 0,          // darts you start the game with
+    startWith: 1,          // darts you start the game with
     max: 3,                // most darts you can carry
     stunTime: 15,          // seconds the creature stays down after a hit
     range: 14,             // how far a dart flies (metres)

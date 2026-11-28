@@ -123,8 +123,9 @@ All keys can be changed in the `keys` section of `src/config.js`.
 - **Iron gates and gate levers:** gates block some tunnels, and the creature can't get through
   a closed gate either. Each gate's lever (rusty orange, glowing faintly) is always somewhere
   you can reach. Pull it again to close the gate, maybe in the creature's face.
-- **Tranquilizer darts:** two lie somewhere in each mine, glowing faintly yellow-green.
-  Walk over one to pick it up, then press **R** to fire where you aim (up to 14 m). It's dark,
+- **Tranquilizer darts:** you start with one, and two more lie somewhere in each mine,
+  glowing faintly yellow-green (walk over one to pick it up). Press **R** to fire where
+  you aim (up to 14 m). It's dark,
   so clap first to see the creature. A hit drops it to its knees for **15 seconds**: it can't
   hear, hunt or catch anyone. With 3 seconds left it starts twitching (that's your warning),
   and when it wakes it heads straight for where the dart came from. A miss is lost.
