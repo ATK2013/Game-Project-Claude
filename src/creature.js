@@ -7,13 +7,14 @@
 //    WANDER      – roams to random places
 //    INVESTIGATE – walks to where it heard a sound, listens, gives up
 //    HUNT        – heard YOU close by; chases your last heard position
+//    STUNNED     – hit by a tranquilizer dart: down for a while, deaf and harmless
 // =====================================================================
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { makeEchoObject } from './pulse.js';
 
 const C = CONFIG.creature;
-export const WANDER = 'WANDER', INVESTIGATE = 'INVESTIGATE', HUNT = 'HUNT';
+export const WANDER = 'WANDER', INVESTIGATE = 'INVESTIGATE', HUNT = 'HUNT', STUNNED = 'STUNNED';
 
 const rand = ([min, max]) => min + Math.random() * (max - min);
 const VOID = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide }); // pitch black
@@ -150,6 +151,8 @@ export class Creature {
     this.breathTimer = 1;
     this.lastBreathCaption = -999;
     this.feeding = 0;            // seconds left standing still after a catch
+    this.stunLeft = 0;           // seconds left knocked out by a dart
+    this.sink = 0;               // how far its body has slumped toward the floor
     // multiplayer friends don't run the AI: they copy the host's creature
     this.remote = !!(game.net && !game.net.isHost);
     this.netTarget = null;
@@ -165,6 +168,7 @@ export class Creature {
   // ev = { pos, loudness, fromPlayer }
   // ------------------------------------------------------------------
   hear(ev) {
+    if (this.state === STUNNED) return false; // out cold: hears nothing
     const dist = Math.hypot(ev.pos.x - this.position.x, ev.pos.z - this.position.z);
     const walls = this.level.rockBetween(this.position, ev.pos);
     const effective = dist + walls * C.wallMuffle;     // walls make sounds "farther"
@@ -237,6 +241,16 @@ export class Creature {
     } else if (kind === 'screech') {
       g.audio.creatureScreech(pos);
       g.caption(`[a piercing shriek — it is HUNTING${g.net ? '' : ' you'}]`, pos, true);
+    } else if (kind === 'stunned') {
+      g.audio.creatureHurt(pos);
+      g.pulses.emit({ origin: pos, radius: 3, color: red, strength: 0.6, fade: 1 });
+      g.caption('[the dart hits — it shrieks and crumples to the ground]', null, true);
+    } else if (kind === 'stirring') {
+      g.audio.creatureBreath(pos, 1);
+      g.caption('[it twitches... it\'s waking up]', pos, true);
+    } else if (kind === 'woke') {
+      g.audio.creatureScreech(pos);
+      g.caption('[it\'s awake — and it\'s coming for whoever shot it]', pos, true);
     } else if (kind === 'lost') {
       g.caption(`[the clicking slows... it has lost ${g.net ? 'its prey' : 'you'}]`, pos);
     }
@@ -289,6 +303,7 @@ export class Creature {
 
   // The thinking part: only runs alone or on the multiplayer host.
   updateBrain(dt) {
+    if (this.state === STUNNED) { this.updateStun(dt); return 0; }
     if (this.feeding > 0) { this.feeding -= dt; return 0; }
     this.think(dt);
     const speed = { WANDER: C.wanderSpeed, INVESTIGATE: C.investigateSpeed, HUNT: C.huntSpeed }[this.state];
@@ -296,6 +311,34 @@ export class Creature {
     this.updateSteps(moved);
     this.updateClicks(dt);
     return moved;
+  }
+
+  // ------------------------------------------------------------------
+  // Tranquilizer darts
+  // ------------------------------------------------------------------
+  // Hit by a dart (fromPos = where it was fired from). Multiplayer friends
+  // only start a timer for the animation; the host's creature does the rest.
+  stun(fromPos) {
+    if (this.remote) { this.stunLeft = CONFIG.darts.stunTime; return; }
+    if (this.state === STUNNED) return;
+    this.state = STUNNED;
+    this.stunLeft = CONFIG.darts.stunTime;
+    this.stirred = false;
+    this.path = [];
+    this.stunFrom = fromPos ? fromPos.clone() : null;
+    this.fx('stunned', this.headPosition());
+  }
+
+  updateStun(dt) {
+    this.stunLeft -= dt;
+    if (!this.stirred && this.stunLeft < 3) {
+      this.stirred = true;
+      this.fx('stirring', this.headPosition()); // a warning: 3 seconds left
+    }
+    if (this.stunLeft > 0) return;
+    this.state = WANDER;
+    this.fx('woke', this.headPosition());
+    if (this.stunFrom) this.investigate(this.stunFrom); // it remembers where the dart came from
   }
 
   // Multiplayer friends: the host tells us where the creature is.
@@ -378,6 +421,11 @@ export class Creature {
   // Swing limbs while walking; stare at you, or twitch the head.
   animate(dt, moved) {
     const b = this.body;
+    if (this.remote && this.stunLeft > 0) this.stunLeft -= dt;
+    // slump to the floor when stunned, get back up afterwards
+    const down = this.state === STUNNED;
+    this.sink += ((down ? -0.85 : 0) - this.sink) * Math.min(1, dt * (down ? 5 : 2));
+    if (down) { this.animateStunned(dt); return; }
     this.walkPhase += moved * 2.2;
     const s = Math.sin(this.walkPhase);
     b.legL.rotation.x = -0.35 + s * 0.4;
@@ -390,6 +438,19 @@ export class Creature {
     b.torso.rotation.z = Math.sin(this.walkPhase * 0.5) * 0.06;
     if (this.shouldStare()) this.stareAtPlayer(dt);
     else this.twitchHead(dt);
+  }
+
+  // Knocked out: on its knees, slumped forward, head hanging. Twitches before waking.
+  animateStunned(dt) {
+    const b = this.body, k = Math.min(1, dt * 5);
+    const waking = this.stunLeft < 3;
+    const jerk = waking && Math.random() < 0.15 ? (Math.random() - 0.5) * 0.8 : 0;
+    b.torso.rotation.x += (1.05 - b.torso.rotation.x) * k;
+    b.torso.rotation.z += (0.15 + jerk * 0.3 - b.torso.rotation.z) * k;
+    b.head.rotation.x += (0.75 - b.head.rotation.x) * k;
+    b.head.rotation.y += (jerk - b.head.rotation.y) * k;
+    b.armL.rotation.x += (0.15 - b.armL.rotation.x) * k;
+    b.armR.rotation.x += (0.15 - b.armR.rotation.x) * k;
   }
 
   // It turns its head toward you when it is close and paying attention.
@@ -422,6 +483,13 @@ export class Creature {
   // Eyes: faint glow when near you (stronger when hunting), a flare after
   // each click, and blinks — except while hunting: then it never blinks.
   updateEyes(dt) {
+    if (this.state === STUNNED) {
+      // eyes shut; they flicker open as it starts to wake
+      const flicker = this.stunLeft < 3 && Math.random() < 0.25;
+      this.eyeMat.uniforms.uOpen.value = flicker ? 1 : 0;
+      this.eyeMat.uniforms.uStare.value = flicker ? 0.5 : 0;
+      return;
+    }
     const d = this.distanceToPlayer();
     let stare = 0;
     if (d < C.eyeGlowDistance) {
@@ -451,7 +519,7 @@ export class Creature {
   }
 
   syncBody() {
-    this.body.root.position.set(this.position.x, 0, this.position.z);
+    this.body.root.position.set(this.position.x, this.sink, this.position.z);
     this.body.root.rotation.y = this.yaw;
   }
 }

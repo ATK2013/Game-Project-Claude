@@ -310,6 +310,29 @@ export class AudioEngine {
     this.tone(out, { f0: 90, f1: 50, dur: 0.08, gain: 0.5 });
   }
 
+  // Hit by a dart: a short, pained shriek, then a heavy collapse.
+  creatureHurt(pos) {
+    const out = this.output(pos, { gain: 0.8, reverb: 0.8 });
+    this.screech(out, 0.5, 900, 2200);
+    this.tone(out, { t: this.now + 0.45, f0: 80, f1: 30, dur: 0.4, gain: 1.1 });       // body hits the floor
+    this.noiseBurst(out, { t: this.now + 0.45, type: 'lowpass', f: 400, dur: 0.3, gain: 0.8 });
+  }
+
+  // Firing a tranquilizer dart: a sharp pneumatic "fwip".
+  dartFire(pos = null) {
+    const out = this.output(pos, { gain: 0.45, reverb: 0.3 });
+    const f = this.noiseBurst(out, { f: 4000, q: 1.5, dur: 0.12, gain: 1 });
+    f.frequency.exponentialRampToValueAtTime(900, this.now + 0.12);
+    this.tone(out, { f0: 1600, f1: 400, dur: 0.05, gain: 0.15 });
+  }
+
+  // A dart snapping against rock.
+  dartHit(pos) {
+    const out = this.output(pos, { gain: 0.5, reverb: 0.5 });
+    this.noiseBurst(out, { f: 3200, q: 5, dur: 0.03, gain: 1 });
+    this.tone(out, { f0: 2600, f1: 1900, dur: 0.06, gain: 0.2, type: 'triangle' });
+  }
+
   // Short screech when the creature starts hunting.
   creatureScreech(pos) {
     const out = this.output(pos, { gain: 0.45, reverb: 0.8 });

@@ -97,8 +97,10 @@
     #cooldown.ready #cooldownArc { stroke: rgba(200, 245, 255, 0.85); }
     #dot { position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px; background: rgba(200, 245, 255, 0.6); border-radius: 50%; }
     .hudbox { position: absolute; bottom: 22px; font-size: 13px; letter-spacing: 0.15em; color: #8fbcc8; text-shadow: 0 0 6px rgba(80, 200, 255, 0.4); }
-    #forks { left: 24px; bottom: 44px; color: var(--gold); text-shadow: 0 0 6px rgba(255, 180, 60, 0.5); }
-    #pebbles { left: 24px; }
+    #darts { left: 24px; bottom: 22px; color: #8f9a70; }
+    #darts.has { color: #d6ff6a; text-shadow: 0 0 6px rgba(200, 255, 80, 0.5); }
+    #forks { left: 24px; bottom: 66px; color: var(--gold); text-shadow: 0 0 6px rgba(255, 180, 60, 0.5); }
+    #pebbles { left: 24px; bottom: 44px; }
     #noise { right: 24px; width: 180px; }
     #noise .bar { height: 6px; border: 1px solid #2f5761; margin-top: 6px; }
     #noiseFill { height: 100%; width: 0%; background: #9fe8ff; transition: width 0.08s linear; }
@@ -176,9 +178,10 @@
     #tClap { width: 92px; height: 92px; right: calc(28px + env(safe-area-inset-right)); bottom: 34px; font-size: 15px; }
     #tSnap { width: 60px; height: 60px; right: calc(136px + env(safe-area-inset-right)); bottom: 26px; }
     #tThrow { width: 60px; height: 60px; right: calc(46px + env(safe-area-inset-right)); bottom: 140px; font-size: 10px; }
+    #tDart { width: 58px; height: 58px; right: calc(116px + env(safe-area-inset-right)); bottom: 196px; font-size: 10px; border-color: rgba(200, 255, 80, 0.5); color: #e2ff9a; }
     #tJump { width: 64px; height: 64px; right: calc(150px + env(safe-area-inset-right)); bottom: 104px; }
     #tPause { width: 44px; height: 44px; left: calc(14px + env(safe-area-inset-left)); top: 12px; font-size: 14px; }
-    #touch.spectate #tSnap, #touch.spectate #tThrow, #touch.spectate #tJump, #touch.spectate #stick { display: none; }
+    #touch.spectate #tSnap, #touch.spectate #tThrow, #touch.spectate #tJump, #touch.spectate #tDart, #touch.spectate #stick { display: none; }
     #stick { position: absolute; width: 0; height: 0; pointer-events: none; }
     #stick::before {
       content: ''; position: absolute; left: -60px; top: -60px; width: 120px; height: 120px; border-radius: 50%;
@@ -202,6 +205,7 @@
     /* move the HUD to the top so thumbs don't cover it */
     body.mobile #forks { top: 12px; bottom: auto; left: calc(72px + env(safe-area-inset-left)); }
     body.mobile #pebbles { top: 32px; bottom: auto; left: calc(72px + env(safe-area-inset-left)); }
+    body.mobile #darts { top: 52px; bottom: auto; left: calc(72px + env(safe-area-inset-left)); }
     body.mobile #noise { top: 12px; bottom: auto; right: calc(20px + env(safe-area-inset-right)); width: 140px; }
     body.mobile #captions { bottom: auto; top: 58px; }
     body.mobile #hint { top: 58px; }
@@ -268,6 +272,7 @@
       <b>SNAP</b><span>small echo, quiet</span>
       <b>JUMP</b><span>jump over gaps and beams</span>
       <b>PEBBLE / PULL</b><span>throw a pebble, or pull a lever</span>
+      <b>DART</b><span>fire a tranquilizer dart (stuns it)</span>
       <b>II</b><span>pause</span>
     </div>
     <div class="controls desktop-only">
@@ -279,6 +284,7 @@
       <b>Q / RIGHT CLICK</b><span>snap: small echo, quiet</span>
       <b>SPACE</b><span>jump over gaps and fallen beams</span>
       <b>E</b><span>pull a lever / throw a pebble</span>
+      <b>R</b><span>fire a tranquilizer dart (stuns it)</span>
       <b>ESC</b><span>pause</span>
     </div>
     <div class="pitch" style="margin:0 0 10px">Find the 4 humming tuning forks. Then reach the old elevator. Levers open gates.</div>
@@ -389,6 +395,7 @@
     <button id="tThrow" class="tbtn">PEBBLE</button>
     <button id="tSnap" class="tbtn">SNAP</button>
     <button id="tJump" class="tbtn">JUMP</button>
+    <button id="tDart" class="tbtn hidden">DART</button>
     <button id="tClap" class="tbtn">CLAP</button>
   </div>
   <div id="rotate"><div class="icon">📱</div><div>TURN YOUR DEVICE SIDEWAYS</div><div class="pitch">ECHO is played in landscape.</div></div>
@@ -407,6 +414,7 @@
     <div id="prompt" class="hidden"></div>
     <div class="hudbox" id="forks">TUNING FORKS  0/4</div>
     <div class="hudbox" id="pebbles">PEBBLES  3</div>
+    <div class="hudbox" id="darts">DARTS  0</div>
     <div class="hudbox" id="noise">NOISE<div class="bar"><div id="noiseFill"></div></div></div>
   </div>
   <div id="captions"></div>

@@ -76,6 +76,7 @@ export class Level {
     this.creatureSpawn = this.placeCreature(this.distancesFrom(this.start, true));
     this.cans = this.scatter(L.tinCans, dist, 3, used);
     this.pebblePiles = this.scatter(L.pebblePiles, dist, 1, used);
+    this.darts = this.scatter(CONFIG.darts.pickups, dist, 4, used); // tranquilizer darts
   }
 
   // Classic "recursive backtracker": a random walk that carves tunnels.

@@ -1,7 +1,8 @@
 // =====================================================================
 //  ECHO — items.js
 //  Everything you can interact with: tuning forks (the goal), tin cans
-//  (noisy traps), pebbles (distractions) and the elevator (the exit).
+//  (noisy traps), pebbles (distractions), tranquilizer darts (stun the
+//  creature) and the elevator (the exit).
 // =====================================================================
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
@@ -11,6 +12,7 @@ import { Mechanisms } from './mechanisms.js';
 
 const G = CONFIG.goal;
 const ACT = CONFIG.actions;
+const D = CONFIG.darts;
 const FORK_NOTES = [392, 440, 494, 587, 659, 740]; // hum pitch of each fork (Hz)
 const flatDist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
@@ -23,6 +25,8 @@ export class Items {
     this.forks = this.level.forks.map((cell, i) => this.makeFork(cell, i));
     this.cans = this.level.cans.map((cell) => this.makeCan(cell));
     this.piles = this.level.pebblePiles.map((cell) => this.makePile(cell));
+    this.darts = this.level.darts.map((cell) => this.makeDartPickup(cell));
+    this.dartCooldown = 0;
     this.thrown = [];
     this.collected = 0;
     this.throwCooldown = 0;
@@ -64,6 +68,8 @@ export class Items {
     if (kind === 'pile') return !this.piles[i].taken;
     if (kind === 'can') return this.cans[i].cooldown <= 0;
     if (kind === 'lever') return this.mech.canClaim(i);
+    if (kind === 'dart') return !this.darts[i].taken;
+    if (kind === 'stun') return !!this.game.creature && this.game.creature.state !== 'STUNNED';
     return false;
   }
 
@@ -73,6 +79,8 @@ export class Items {
     else if (kind === 'pile') this.takePile(this.piles[i], by);
     else if (kind === 'can') this.kickCan(this.cans[i], data.v, data.creep, by);
     else if (kind === 'lever') this.mech.pull(i, by);
+    else if (kind === 'dart') this.takeDart(this.darts[i], by);
+    else if (kind === 'stun') this.stunCreature(by, data.from);
   }
 
   // ------------------------------------------------------------------
@@ -225,6 +233,104 @@ export class Items {
     g.caption('[you pick up some pebbles]');
   }
 
+  // ------------------------------------------------------------------
+  // Tranquilizer darts
+  // ------------------------------------------------------------------
+  makeDartPickup(cell) {
+    const pos = this.spotIn(cell, 1.4);
+    const m = this.game.mats;
+    const geom = mergeAll([
+      new THREE.CylinderGeometry(0.012, 0.012, 0.2, 6).rotateZ(Math.PI / 2),                  // body
+      new THREE.ConeGeometry(0.012, 0.07, 5).rotateZ(-Math.PI / 2).translate(0.135, 0, 0),    // needle
+      new THREE.BoxGeometry(0.05, 0.05, 0.004).translate(-0.09, 0, 0),                        // fins
+      new THREE.BoxGeometry(0.05, 0.004, 0.05).translate(-0.09, 0, 0),
+    ]);
+    const mesh = this.add(geom, { surface: m.dartSurface, line: m.dartLine }, 20);
+    mesh.position.set(pos.x, 0.03, pos.z);
+    mesh.rotation.y = this.rng() * Math.PI * 2;
+    return { pos, mesh, taken: false };
+  }
+
+  updateDarts(dt) {
+    const g = this.game;
+    this.dartCooldown -= dt;
+    if (g.localOut || g.darts >= D.max) return;
+    for (const [i, d] of this.darts.entries()) {
+      if (!d.taken && flatDist(g.player.position, d.pos) < 0.9) this.tryClaim('dart', i, d);
+    }
+  }
+
+  takeDart(d, by) {
+    const g = this.game;
+    if (d.taken) return;
+    d.taken = true;
+    g.world.remove(d.mesh);
+    if (by !== g.myId) return; // a friend took it
+    g.darts = Math.min(D.max, g.darts + 1);
+    g.ui.setDarts(g.darts);
+    g.audio.pickup();
+    g.caption(`[you pick up a tranquilizer dart — ${g.dartHint}]`);
+  }
+
+  // Called when the player presses R / DART.
+  fireDart() {
+    const g = this.game;
+    if (g.darts <= 0) { g.caption('[no tranquilizer darts — look for one]'); return; }
+    if (this.dartCooldown > 0) return;
+    this.dartCooldown = D.cooldown;
+    g.darts--;
+    g.ui.setDarts(g.darts);
+    const origin = g.camera.position.clone();
+    const dir = new THREE.Vector3();
+    g.camera.getWorldDirection(dir);
+    const wall = this.dartImpact(origin, dir);           // where it would hit the rock
+    const hitAt = this.dartHitsCreature(origin, dir);    // distance to the creature, or -1
+    const hit = hitAt >= 0 && hitAt < origin.distanceTo(wall);
+    // the hit lands first, so a stunned creature never hears the shot; a miss it may hear
+    if (hit) {
+      g.stats.stuns = (g.stats.stuns || 0) + 1;
+      g.claim('stun', 0, { from: [origin.x, origin.z] });
+    }
+    g.playerFx('dart', origin);
+    if (!hit) g.playerFx('dartMiss', wall);
+  }
+
+  // Does a dart fired from o in direction d hit the creature's body?
+  // The body is treated as a vertical pole. Returns the distance, or -1.
+  dartHitsCreature(o, d) {
+    const c = this.game.creature;
+    if (!c) return -1;
+    const flat = d.x * d.x + d.z * d.z;
+    if (flat < 1e-6) return -1;                           // aiming straight up or down
+    const s = ((c.position.x - o.x) * d.x + (c.position.z - o.z) * d.z) / flat;
+    if (s <= 0) return -1;                                // it's behind you
+    const missX = o.x + d.x * s - c.position.x, missZ = o.z + d.z * s - c.position.z;
+    const y = o.y + d.y * s;
+    const along = s * Math.sqrt(flat + d.y * d.y);
+    const ok = Math.hypot(missX, missZ) < D.aimForgiveness && y > 0.2 && y < CONFIG.creature.height + 0.1 && along < D.range;
+    return ok ? along : -1;
+  }
+
+  // Follow the dart until it hits rock, the floor or the ceiling (or runs out of range).
+  dartImpact(o, d) {
+    const lv = this.level, p = o.clone(), step = d.clone().multiplyScalar(0.2);
+    for (let t = 0; t < D.range; t += 0.2) {
+      const next = p.clone().add(step);
+      const solid = !lv.isOpen(...lv.toCell(next.x, next.z)) || next.y < lv.groundAt(next.x, next.z) || next.y > lv.height;
+      if (solid) return p;
+      p.copy(next);
+    }
+    return p;
+  }
+
+  stunCreature(by, from) {
+    const c = this.game.creature;
+    if (!c) return;
+    const fromPos = from ? new THREE.Vector3(from[0], 0, from[1]) : null;
+    c.stun(fromPos);
+    if (by !== this.game.myId && this.game.net) this.game.caption(`[${this.game.nameOf(by)}'s dart hits the creature]`, null, true);
+  }
+
   // Called when the player presses E.
   throwPebble() {
     const g = this.game;
@@ -337,6 +443,7 @@ export class Items {
     this.updateForks(dt);
     this.updateCans(dt);
     this.updatePiles();
+    this.updateDarts(dt);
     this.updateThrown(dt);
     this.updateElevator(dt);
     this.mech.update(dt);
