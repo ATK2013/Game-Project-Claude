@@ -479,12 +479,13 @@ export class AudioEngine {
   }
 
   // The jumpscare shriek, right in your face.
-  shriek() {
+  // dur = how long it lasts (seconds)
+  shriek(dur = 1.4) {
     const out = this.scareOut(1.3, 0.8);
-    this.screech(out, 1.4, 350, 1700);
-    this.screech(out, 1.2, 520, 2300);
-    this.screech(out, 1.0, 260, 1100);
-    this.tone(out, { f0: 120, f1: 40, dur: 1.0, gain: 0.9, type: 'square' });
+    this.screech(out, dur, 350, 1700);
+    this.screech(out, dur * 0.86, 520, 2300);
+    this.screech(out, dur * 0.71, 260, 1100);
+    this.tone(out, { f0: 120, f1: 40, dur: dur * 0.71, gain: 0.9, type: 'square' });
   }
 
   forkRing(pos, freq) {

@@ -225,7 +225,11 @@ export const CONFIG = {
     shake: 1.0,            // camera shake + zoom punch strength (0 = none, for motion-sensitive players)
     faceShake: 1.0,        // how violently the face thrashes around the screen (0.3 = much calmer)
     volume: 1.3,           // loudness of the jumpscare sounds (1 = normal, up to about 1.5)
-    shakeTime: 1.7,        // seconds the face shakes before everything goes black
+    // how long each part lasts (seconds) — together about 1 second
+    stareTime: 0.15,       // the still, silent stare
+    lungeTime: 0.15,       // the face rushing at you
+    shakeTime: 0.55,       // the face shaking violently
+    blackTime: 0.15,       // black screen before Game Over
   },
 
   // ---------------------------------------------------------------
