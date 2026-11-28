@@ -398,10 +398,20 @@ function newGame(seed) {
     : 'Clap (F or click) to see. Every clap tells it where you are.';
   hint.style.opacity = 1;
   ui.show(null);
+  showWhoIsHere();
   game.state = 'playing';
   input.requestLock();
   // a soft first glimpse of your surroundings (the creature can't hear it)
   pulses.emit({ origin: camera.position.clone(), radius: 7, color: game.myColor, strength: 0.7 });
+}
+
+// List the creatures in this run on screen for a few seconds.
+function showWhoIsHere() {
+  ui.showSpawnInfo(game.creatures.map((c) => ({
+    name: c.sp.name,
+    blurb: c.sp.blurb,
+    rare: c.type !== 'listener' && CONFIG.species[c.type].chance < CONFIG.ui.rareChance,
+  })));
 }
 
 // Multiplayer: everyone starts in the first cell, side by side.

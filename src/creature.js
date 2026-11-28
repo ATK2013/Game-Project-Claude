@@ -21,7 +21,7 @@ export const WANDER = 'WANDER', INVESTIGATE = 'INVESTIGATE', HUNT = 'HUNT', STUN
 const rand = ([min, max]) => min + Math.random() * (max - min);
 
 // What makes each species different. The Listener uses the plain values.
-const LISTENER = { name: 'the Listener', size: 1, speed: 1, hearing: 1, clickEvery: 1, eyeSize: 1, silent: false };
+const LISTENER = { name: 'the Listener', blurb: 'hunts by sound', size: 1, speed: 1, hearing: 1, clickEvery: 1, eyeSize: 1, silent: false };
 function speciesOf(type) {
   return { ...LISTENER, ...(type === 'listener' ? {} : CONFIG.species[type]) };
 }

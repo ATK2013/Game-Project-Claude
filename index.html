@@ -124,6 +124,21 @@
     .caption.important { color: #ffd7c9; }
     .caption.fade { opacity: 0; }
 
+    /* ---------- "In the mine tonight" (which creatures are in this run) ---------- */
+    #spawnInfo {
+      position: fixed; left: 50%; top: 20%; transform: translateX(-50%); z-index: 13; pointer-events: none;
+      text-align: center; padding: 12px 22px; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 60, 40, 0.3);
+      transition: opacity 1.2s; max-width: 92vw;
+    }
+    #spawnInfo.fade { opacity: 0; }
+    #spawnInfo .head { font-size: 12px; letter-spacing: 0.35em; color: #ff8a78; margin-bottom: 8px; }
+    #spawnInfo .who { font-size: 14px; color: #9fc3cc; margin: 3px 0; letter-spacing: 0.04em; }
+    #spawnInfo .who b { color: #ffd0c4; font-weight: normal; letter-spacing: 0.12em; }
+    #spawnInfo .rare { color: #ff6a55; letter-spacing: 0.15em; }
+    body.mobile #spawnInfo { top: 84px; padding: 8px 14px; }
+    body.mobile #spawnInfo .head { font-size: 10px; margin-bottom: 4px; }
+    body.mobile #spawnInfo .who { font-size: 11px; margin: 1px 0; }
+
     /* ---------- Effects ---------- */
     #flash { position: fixed; inset: 0; opacity: 0; pointer-events: none; z-index: 12; }
     #vignette {
@@ -420,6 +435,7 @@
     <div class="hudbox" id="noise">NOISE<div class="bar"><div id="noiseFill"></div></div></div>
   </div>
   <div id="captions"></div>
+  <div id="spawnInfo" class="hidden"></div>
   <div id="vignette"></div>
   <div id="flash"></div>
 

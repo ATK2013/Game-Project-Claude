@@ -170,6 +170,7 @@ export const CONFIG = {
     crawler: {
       chance: 0.45,        // a fast, knee-high skittering thing
       name: 'a Crawler',   // shown on the Game Over screen
+      blurb: 'fast and low to the ground', // shown when you enter the mine
       size: 0.6,           // body size compared to the Listener (it crawls on all fours)
       headY: 0.75,         // how high its head is (metres)
       speed: 1.15,         // a bit faster than the Listener
@@ -182,6 +183,7 @@ export const CONFIG = {
     mimic: {
       chance: 0.2,         // sits still and fakes sounds to lure you in
       name: 'the Mimic',
+      blurb: 'fakes sounds to lure you in',
       size: 0.75,
       speed: 0.45,         // barely moves...
       hearing: 0.8,
@@ -193,6 +195,7 @@ export const CONFIG = {
     shade: {
       chance: 0.08,        // very rare: completely silent, eyes never glow
       name: 'the Shade',
+      blurb: 'makes no sound at all',
       size: 0.9,
       speed: 0.75,
       hearing: 0.8,
@@ -325,5 +328,7 @@ export const CONFIG = {
     closeDistance: 8,      // sounds closer than this are "close"
     nearDistance: 18,      // closer than this are "nearby", beyond = "distant"
     noiseDecay: 1.4,       // how fast the noise meter falls back down
+    creatureIntroTime: 5,  // seconds the "IN THE MINE TONIGHT" list stays up at the start
+    rareChance: 0.15,      // creatures rarer than this are marked RARE in that list
   },
 };
