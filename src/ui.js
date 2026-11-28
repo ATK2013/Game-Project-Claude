@@ -59,8 +59,18 @@ export class UI {
   }
 
   // Show a caption line for a few seconds.
+  // On computers captions stack (up to 4). On phones/tablets each new caption
+  // replaces the last one, so they never cover the screen.
   caption(text, important = false) {
     if (!this.captionsOn) return;
+    if (document.body.classList.contains('mobile')) {
+      const now = performance.now();
+      // an important warning stays at least 1.5 s before a routine message can replace it
+      const warningShowing = this.captionBox.firstChild && now - (this.lastWarningAt || 0) < 1500;
+      if (!important && warningShowing) return;
+      if (important) this.lastWarningAt = now;
+      this.captionBox.innerHTML = '';
+    }
     const line = document.createElement('div');
     line.className = important ? 'caption important' : 'caption';
     line.textContent = text;
