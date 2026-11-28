@@ -17,10 +17,11 @@ import { vibrate } from './touch.js';
 const J = CONFIG.jumpscare;
 
 // Timeline (seconds since being caught)
-const STARE_END = 0.35;               // the silent stare ends, the lunge begins
-const LUNGE_END = 0.6;                // the face is in yours: the shaking begins
-const SHAKE_END = LUNGE_END + J.shakeTime; // cut to black
-const END_TIME = SHAKE_END + 0.6;     // show the Game Over screen
+// (each part's length is set in CONFIG.jumpscare)
+const STARE_END = J.stareTime;               // the silent stare ends, the lunge begins
+const LUNGE_END = STARE_END + J.lungeTime;   // the face is in yours: the shaking begins
+const SHAKE_END = LUNGE_END + J.shakeTime;   // cut to black
+const END_TIME = SHAKE_END + J.blackTime;    // show the Game Over screen
 const GHOSTS = 3;                     // after-images trailing behind the face
 const rand = (size) => (Math.random() - 0.5) * size;
 
@@ -90,7 +91,7 @@ export class Jumpscare {
     if (this.phase === 'stare') {
       this.phase = 'lunge';
       this.audio.scareBoost(true);
-      this.audio.shriek();
+      this.audio.shriek(SHAKE_END - STARE_END); // lasts until the screen goes black
       this.audio.boom();
       this.ui.flash('rgba(255,0,0,0.9)', 450); // the only bright flash
       this.ui.setFear(0.9);
@@ -108,7 +109,7 @@ export class Jumpscare {
     if (this.phase !== 'shake') {
       this.phase = 'shake';
       this.audio.violentScream(SHAKE_END - LUNGE_END);
-      vibrate([300, 40, 300, 40, 600]);
+      vibrate(Math.round(J.shakeTime * 1000));
       this.ui.setFear(1);
     }
     // every 40-110 ms it SNAPS to a new spot across the screen
