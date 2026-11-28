@@ -73,7 +73,9 @@ export class Level {
     placeFeatures(this, dist);   // pits, beams, gates, levers, bells (features.js)
     const used = this.featureCells;
     this.forks = this.placeForks(dist, used);
-    this.creatureSpawn = this.placeCreature(this.distancesFrom(this.start, true));
+    const reach = this.distancesFrom(this.start, true);
+    this.creatureSpawn = this.placeCreature(reach);
+    this.extraCreatures = this.placeExtraCreatures(reach); // Crawler, Mimic, Shade (maybe)
     this.cans = this.scatter(L.tinCans, dist, 3, used);
     this.pebblePiles = this.scatter(L.pebblePiles, dist, 1, used);
     this.darts = this.scatter(CONFIG.darts.pickups, dist, 4, used); // tranquilizer darts
@@ -189,6 +191,24 @@ export class Level {
     const minCells = CONFIG.creature.spawnMinDistance / this.cell;
     const far = this.openCells().filter(([x, z]) => dist[x + z * this.size] >= minCells);
     return far.length ? this.pick(far) : this.farthestCell(dist);
+  }
+
+  // Roll the dice for each other species; place the ones that appear far
+  // from the start and from each other. Returns [{ type, cell }].
+  placeExtraCreatures(dist) {
+    const minCells = CONFIG.creature.spawnMinDistance / this.cell;
+    const taken = [this.creatureSpawn];
+    const out = [];
+    for (const [type, sp] of Object.entries(CONFIG.species)) {
+      if (this.rng() >= sp.chance) continue;
+      const spots = this.openCells().filter(([x, z]) => dist[x + z * this.size] >= minCells &&
+        taken.every(([tx, tz]) => Math.abs(tx - x) + Math.abs(tz - z) >= 4));
+      if (!spots.length) continue;
+      const cell = this.pick(spots);
+      taken.push(cell);
+      out.push({ type, cell });
+    }
+    return out;
   }
 
   // Random open cells at least 'minDist' cells (path) from the start.

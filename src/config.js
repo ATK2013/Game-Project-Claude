@@ -162,6 +162,45 @@ export const CONFIG = {
   },
 
   // ---------------------------------------------------------------
+  // Other creatures. The Listener is always there; each of these may
+  // also appear in a run. chance = how likely (0 = never, 1 = every run).
+  // speed / hearing are multipliers on the Listener's values above.
+  // ---------------------------------------------------------------
+  species: {
+    crawler: {
+      chance: 0.45,        // a fast, knee-high skittering thing
+      name: 'a Crawler',   // shown on the Game Over screen
+      size: 0.6,           // body size compared to the Listener (it crawls on all fours)
+      headY: 0.75,         // how high its head is (metres)
+      speed: 1.15,         // a bit faster than the Listener
+      hearing: 0.6,        // but hears less far
+      clickRadius: 6,      // smaller red pulses...
+      clickEvery: 0.55,    // ...but much more often (multiplier on click times)
+      stepLength: 0.45,    // quick little steps
+      eyeSize: 0.6,        // smaller eyes
+    },
+    mimic: {
+      chance: 0.2,         // sits still and fakes sounds to lure you in
+      name: 'the Mimic',
+      size: 0.75,
+      speed: 0.45,         // barely moves...
+      hearing: 0.8,
+      mimicEvery: [7, 13], // seconds between fake sounds (a clap, footsteps, a fork's hum)
+      lungeRange: 3,       // ...until you come this close
+      lungeSpeed: 5.2,     // then it lunges, faster than you can run
+      lungeTime: 1.6,      // for this many seconds
+    },
+    shade: {
+      chance: 0.08,        // very rare: completely silent, eyes never glow
+      name: 'the Shade',
+      size: 0.9,
+      speed: 0.75,
+      hearing: 0.8,
+      silent: true,        // no clicks, footsteps or breathing
+    },
+  },
+
+  // ---------------------------------------------------------------
   // Difficulty presets. Multipliers are applied on top of the values above.
   // ---------------------------------------------------------------
   difficulty: {

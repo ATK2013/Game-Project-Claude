@@ -310,6 +310,40 @@ export class AudioEngine {
     this.tone(out, { f0: 90, f1: 50, dur: 0.08, gain: 0.5 });
   }
 
+  // The Crawler's clicks: higher, faster, like teeth chattering.
+  crawlerClick(pos) {
+    const out = this.output(pos, { gain: 0.8, reverb: 0.6 });
+    for (let i = 0; i < 6; i++) {
+      this.noiseBurst(out, { t: this.now + i * 0.035, f: 4200 + Math.random() * 900, q: 10, dur: 0.018, gain: 1.1 });
+    }
+  }
+
+  // The Crawler's steps: quick, light, many-legged taps.
+  crawlerStep(pos) {
+    const out = this.output(pos, { gain: 0.45, reverb: 0.3 });
+    for (let i = 0; i < 3; i++) {
+      this.noiseBurst(out, { t: this.now + i * 0.05, f: 1800 + Math.random() * 800, q: 3, dur: 0.02, gain: 0.8 });
+    }
+  }
+
+  // The Mimic faking someone walking: four footsteps in a row.
+  fakeSteps(pos) {
+    const out = this.output(pos, { gain: 0.3, reverb: 0.3 });
+    for (let i = 0; i < 4; i++) {
+      const t = this.now + i * 0.5;
+      this.noiseBurst(out, { t, type: 'lowpass', f: 420 + Math.random() * 150, dur: 0.09, gain: 1 });
+      this.noiseBurst(out, { t, type: 'highpass', f: 3500, dur: 0.04, gain: 0.12 });
+    }
+  }
+
+  // The Mimic faking a tuning fork's hum.
+  fakeHum(pos) {
+    const out = this.output(pos, { gain: 0.35, reverb: 0.6 });
+    const f = [392, 440, 494, 587][Math.floor(Math.random() * 4)];
+    this.tone(out, { f0: f, dur: 2.2, gain: 0.5, attack: 0.3 });
+    this.tone(out, { f0: f * 1.004, dur: 2.2, gain: 0.4, attack: 0.3 });
+  }
+
   // Hit by a dart: a short, pained shriek, then a heavy collapse.
   creatureHurt(pos) {
     const out = this.output(pos, { gain: 0.8, reverb: 0.8 });

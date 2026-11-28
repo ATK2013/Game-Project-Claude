@@ -69,7 +69,7 @@ export class Items {
     if (kind === 'can') return this.cans[i].cooldown <= 0;
     if (kind === 'lever') return this.mech.canClaim(i);
     if (kind === 'dart') return !this.darts[i].taken;
-    if (kind === 'stun') return !!this.game.creature && this.game.creature.state !== 'STUNNED';
+    if (kind === 'stun') { const c = this.game.creatures[i]; return !!c && c.state !== 'STUNNED'; }
     return false;
   }
 
@@ -80,7 +80,7 @@ export class Items {
     else if (kind === 'can') this.kickCan(this.cans[i], data.v, data.creep, by);
     else if (kind === 'lever') this.mech.pull(i, by);
     else if (kind === 'dart') this.takeDart(this.darts[i], by);
-    else if (kind === 'stun') this.stunCreature(by, data.from);
+    else if (kind === 'stun') this.stunCreature(by, data.from, i);
   }
 
   // ------------------------------------------------------------------
@@ -284,22 +284,30 @@ export class Items {
     const dir = new THREE.Vector3();
     g.camera.getWorldDirection(dir);
     const wall = this.dartImpact(origin, dir);           // where it would hit the rock
-    const hitAt = this.dartHitsCreature(origin, dir);    // distance to the creature, or -1
-    const hit = hitAt >= 0 && hitAt < origin.distanceTo(wall);
+    const target = this.dartTarget(origin, dir);         // the first creature in the dart's path
+    const hit = !!target && target.dist < origin.distanceTo(wall);
     // the hit lands first, so a stunned creature never hears the shot; a miss it may hear
     if (hit) {
       g.stats.stuns = (g.stats.stuns || 0) + 1;
-      g.claim('stun', 0, { from: [origin.x, origin.z] });
+      g.claim('stun', target.index, { from: [origin.x, origin.z] });
     }
     g.playerFx('dart', origin);
     if (!hit) g.playerFx('dartMiss', wall);
   }
 
-  // Does a dart fired from o in direction d hit the creature's body?
+  // The nearest creature the dart would hit: { index, dist }, or null.
+  dartTarget(o, d) {
+    let best = null;
+    this.game.creatures.forEach((c, index) => {
+      const dist = this.dartHitsCreature(c, o, d);
+      if (dist >= 0 && (!best || dist < best.dist)) best = { index, dist };
+    });
+    return best;
+  }
+
+  // Does a dart fired from o in direction d hit this creature's body?
   // The body is treated as a vertical pole. Returns the distance, or -1.
-  dartHitsCreature(o, d) {
-    const c = this.game.creature;
-    if (!c) return -1;
+  dartHitsCreature(c, o, d) {
     const flat = d.x * d.x + d.z * d.z;
     if (flat < 1e-6) return -1;                           // aiming straight up or down
     const s = ((c.position.x - o.x) * d.x + (c.position.z - o.z) * d.z) / flat;
@@ -307,7 +315,8 @@ export class Items {
     const missX = o.x + d.x * s - c.position.x, missZ = o.z + d.z * s - c.position.z;
     const y = o.y + d.y * s;
     const along = s * Math.sqrt(flat + d.y * d.y);
-    const ok = Math.hypot(missX, missZ) < D.aimForgiveness && y > 0.2 && y < CONFIG.creature.height + 0.1 && along < D.range;
+    const top = c.headPosition().y + 0.3;
+    const ok = Math.hypot(missX, missZ) < D.aimForgiveness && y > 0.1 && y < top && along < D.range;
     return ok ? along : -1;
   }
 
@@ -323,8 +332,8 @@ export class Items {
     return p;
   }
 
-  stunCreature(by, from) {
-    const c = this.game.creature;
+  stunCreature(by, from, index = 0) {
+    const c = this.game.creatures[index];
     if (!c) return;
     const fromPos = from ? new THREE.Vector3(from[0], 0, from[1]) : null;
     c.stun(fromPos);

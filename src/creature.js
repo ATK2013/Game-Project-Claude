@@ -1,5 +1,7 @@
 // =====================================================================
 //  ECHO — creature.js
+//  All the creatures in the mine. The Listener is always there; the
+//  Crawler, the Mimic and the Shade may appear too (see CONFIG.species).
 //  The Listener: tall, thin, eyeless. Invisible unless an echo pulse
 //  washes over it. It hunts purely by sound and clicks to echolocate.
 //
@@ -17,6 +19,12 @@ const C = CONFIG.creature;
 export const WANDER = 'WANDER', INVESTIGATE = 'INVESTIGATE', HUNT = 'HUNT', STUNNED = 'STUNNED';
 
 const rand = ([min, max]) => min + Math.random() * (max - min);
+
+// What makes each species different. The Listener uses the plain values.
+const LISTENER = { name: 'the Listener', size: 1, speed: 1, hearing: 1, clickEvery: 1, eyeSize: 1, silent: false };
+function speciesOf(type) {
+  return { ...LISTENER, ...(type === 'listener' ? {} : CONFIG.species[type]) };
+}
 const VOID = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide }); // pitch black
 
 // ---------------------------------------------------------------------
@@ -97,7 +105,8 @@ function buildArm(mats, x) {
   return upper;
 }
 
-export function buildCreatureBody(mats, eyeMat) {
+// size: 1 = the Listener's full height (CONFIG.creature.height)
+export function buildCreatureBody(mats, eyeMat, size = 1) {
   const root = new THREE.Group();
   const hips = new THREE.Group();
   hips.position.y = 1.32;
@@ -118,7 +127,7 @@ export function buildCreatureBody(mats, eyeMat) {
   const head = buildHead(mats, eyeMat);
   head.position.y = 1.12;
   torso.add(head);
-  root.scale.setScalar(C.height / 3.0);
+  root.scale.setScalar((C.height / 3.0) * size);
   return { root, legL, legR, armL, armR, torso, head };
 }
 
@@ -126,21 +135,30 @@ export function buildCreatureBody(mats, eyeMat) {
 // The Creature
 // ---------------------------------------------------------------------
 export class Creature {
-  constructor(game) {
+  // type: 'listener' | 'crawler' | 'mimic' | 'shade'. index: its number in game.creatures.
+  constructor(game, { type = 'listener', cell = game.level.creatureSpawn, index = 0 } = {}) {
     this.game = game;
     this.level = game.level;
-    const [sx, sz] = this.level.creatureSpawn;
-    this.position = this.level.toWorld(sx, sz);
-    this.eyeMat = game.mats.creatureEye;
-    this.body = buildCreatureBody({ surface: VOID, line: null }, this.eyeMat);
+    this.type = type;
+    this.index = index;
+    this.sp = speciesOf(type);
+    this.position = this.level.toWorld(cell[0], cell[1]);
+    // each creature needs its own eye material (each blinks and glows on its own)
+    this.eyeMat = index === 0 ? game.mats.creatureEye
+      : game.pulses.makeMaterial('eye', { eyeSize: C.eyeSize * this.sp.eyeSize });
+    this.body = buildCreatureBody({ surface: VOID, line: null }, this.eyeMat, this.sp.size);
+    if (type === 'shade') this.body.root.scale.x *= 0.75; // unnaturally thin
     game.world.add(this.body.root);
+    this.mimicTimer = this.sp.mimicEvery ? rand(this.sp.mimicEvery) : 0;
+    this.lungeLeft = 0;          // Mimic: seconds left in a lunge
+    this.lungeCooldown = 0;
     this.state = WANDER;
     this.path = [];
     this.target = null;          // where it is walking to (world position)
     this.lastHeard = -999;       // game time when it last heard the player (HUNT)
     this.linger = 0;             // seconds left listening at a spot
     this.clickTimer = rand(C.clickWander);
-    this.stepLeft = C.stepLength;
+    this.stepLeft = this.sp.stepLength || C.stepLength;
     this.yaw = 0;
     this.walkPhase = 0;
     this.twitch = 0;
@@ -161,7 +179,10 @@ export class Creature {
 
   get diff() { return this.game.difficulty; }
   cell() { return this.level.toCell(this.position.x, this.position.z); }
-  headPosition() { return new THREE.Vector3(this.position.x, C.height * 0.88, this.position.z); }
+  headPosition() {
+    const y = this.sp.headY || C.height * 0.88 * this.sp.size;
+    return new THREE.Vector3(this.position.x, y, this.position.z);
+  }
 
   // ------------------------------------------------------------------
   // Hearing — called by main.js for every sound in the world.
@@ -172,9 +193,10 @@ export class Creature {
     const dist = Math.hypot(ev.pos.x - this.position.x, ev.pos.z - this.position.z);
     const walls = this.level.rockBetween(this.position, ev.pos);
     const effective = dist + walls * C.wallMuffle;     // walls make sounds "farther"
-    if (effective > ev.loudness * this.diff.hearing) return false;
+    const hearing = this.diff.hearing * this.sp.hearing;
+    if (effective > ev.loudness * hearing) return false;
 
-    const closePlayer = ev.fromPlayer && effective < C.huntDistance * this.diff.hearing;
+    const closePlayer = ev.fromPlayer && effective < C.huntDistance * hearing;
     if (closePlayer || (this.state === HUNT && ev.fromPlayer)) {
       this.startHunt(ev.pos);
     } else if (this.state !== HUNT || this.game.time - this.lastHeard > 1.5) {
@@ -207,6 +229,27 @@ export class Creature {
     this.fx('lost', this.position);
   }
 
+  // The Mimic's fake sounds: they look and sound like the real thing.
+  applyMimicFx(kind, pos) {
+    const g = this.game, P = CONFIG.pulse;
+    if (kind === 'fake-clap') {
+      g.pulses.emit({ origin: pos, radius: CONFIG.actions.clapRadius * 0.8, color: P.playerColor, strength: 1.1 });
+      g.audio.clap(pos);
+      g.caption('[someone claps — {dir}, {dist}]', pos);
+    } else if (kind === 'fake-steps') {
+      g.pulses.emit({ origin: new THREE.Vector3(pos.x, 0.1, pos.z), radius: 2, color: P.playerColor, strength: 0.7, fade: 1.2 });
+      g.audio.fakeSteps(pos);
+      g.caption('[footsteps — {dir}, {dist}]', pos);
+    } else if (kind === 'fake-hum') {
+      g.pulses.emit({ origin: pos, radius: CONFIG.goal.forkPulseRadius, color: P.forkColor, strength: 0.7, fade: 1.3 });
+      g.audio.fakeHum(pos);
+      g.caption('[a soft metallic hum — {dir}, {dist}]', pos);
+    } else if (kind === 'lunge') {
+      g.audio.creatureScreech(pos);
+      g.caption('[something LUNGES out of the dark]', pos, true);
+    }
+  }
+
   // Multiplayer: after catching someone it stands still for a while.
   feed(seconds) {
     this.feeding = seconds;
@@ -220,13 +263,27 @@ export class Creature {
   // ------------------------------------------------------------------
   fx(kind, pos) {
     this.applyFx(kind, pos);
-    if (this.game.net) this.game.net.sendCreatureFx(kind, pos);
+    if (this.game.net) this.game.net.sendCreatureFx(kind, pos, this.index);
   }
 
   applyFx(kind, pos) {
     const g = this.game, red = CONFIG.pulse.creatureColor;
-    if (kind === 'click') {
-      g.pulses.emit({ origin: pos, radius: C.clickRadius, color: red, strength: 0.9 });
+    if (kind.startsWith('fake') || kind === 'lunge') return this.applyMimicFx(kind, pos);
+    if (kind === 'click' && this.type === 'crawler') {
+      g.pulses.emit({ origin: pos, radius: this.sp.clickRadius, color: red, strength: 0.8 });
+      g.audio.crawlerClick(pos);
+      this.flare = 0.4;
+      g.caption('[rapid skittering clicks — {dir}, {dist}]', pos);
+    } else if (kind === 'step' && this.type === 'crawler') {
+      g.audio.crawlerStep(pos);
+      g.pulses.emit({ origin: pos, radius: 1.0, color: red, strength: 0.4, fade: 0.6 });
+      const dist = Math.hypot(g.player.position.x - pos.x, g.player.position.z - pos.z);
+      if (dist < CONFIG.ui.closeDistance + 2 && g.time - this.lastStepCaption > 4) {
+        this.lastStepCaption = g.time;
+        g.caption('[something skittering — {dir}, {dist}]', pos);
+      }
+    } else if (kind === 'click') {
+      g.pulses.emit({ origin: pos, radius: this.sp.clickRadius || C.clickRadius, color: red, strength: 0.9 });
       g.audio.creatureClick(pos);
       this.flare = 0.5; // its eyes flare as it clicks
       g.caption('[clicking — {dir}, {dist}]', pos);
@@ -305,12 +362,70 @@ export class Creature {
   updateBrain(dt) {
     if (this.state === STUNNED) { this.updateStun(dt); return 0; }
     if (this.feeding > 0) { this.feeding -= dt; return 0; }
+    if (this.type === 'mimic') return this.updateMimic(dt);
     this.think(dt);
     const speed = { WANDER: C.wanderSpeed, INVESTIGATE: C.investigateSpeed, HUNT: C.huntSpeed }[this.state];
-    const moved = this.followPath(dt, speed * this.diff.creatureSpeed);
+    const moved = this.followPath(dt, speed * this.diff.creatureSpeed * this.sp.speed);
     this.updateSteps(moved);
     this.updateClicks(dt);
     return moved;
+  }
+
+  // ------------------------------------------------------------------
+  // The Mimic: barely moves, fakes sounds to lure you, lunges when you're close
+  // ------------------------------------------------------------------
+  updateMimic(dt) {
+    const sp = this.sp;
+    if ((this.mimicTimer -= dt) <= 0) {
+      this.mimicTimer = rand(sp.mimicEvery);
+      const fakes = ['fake-clap', 'fake-steps', 'fake-hum'];
+      this.fx(fakes[Math.floor(Math.random() * fakes.length)], this.headPosition());
+    }
+    this.lungeCooldown -= dt;
+    if (this.lungeLeft > 0) return this.continueLunge(dt);
+    const prey = this.nearestPrey(sp.lungeRange);
+    if (prey && this.lungeCooldown <= 0) {
+      this.lungeLeft = sp.lungeTime;
+      this.state = HUNT;
+      this.fx('lunge', this.headPosition());
+      return this.continueLunge(dt);
+    }
+    this.think(dt); // otherwise: shuffle about slowly, investigate sounds
+    const speed = { WANDER: C.wanderSpeed, INVESTIGATE: C.investigateSpeed, HUNT: C.huntSpeed }[this.state];
+    return this.followPath(dt, speed * this.diff.creatureSpeed * sp.speed);
+  }
+
+  // Charge straight at the nearest player for a moment.
+  continueLunge(dt) {
+    this.lungeLeft -= dt;
+    const prey = this.nearestPrey(this.sp.lungeRange + 4);
+    if (this.lungeLeft <= 0 || !prey) {
+      this.lungeLeft = 0;
+      this.lungeCooldown = 4;
+      this.state = WANDER;
+      this.path = [];
+      return 0;
+    }
+    const dx = prey.x - this.position.x, dz = prey.z - this.position.z;
+    const d = Math.hypot(dx, dz);
+    const step = Math.min(d, this.sp.lungeSpeed * this.diff.creatureSpeed * dt);
+    const next = this.position.clone();
+    next.x += (dx / d) * step;
+    next.z += (dz / d) * step;
+    if (!this.level.isPassable(...this.level.toCell(next.x, next.z))) return 0; // no lunging through walls
+    this.position.copy(next);
+    this.turnToward(Math.atan2(dx, dz), dt);
+    return step;
+  }
+
+  // The closest living player within 'range' metres with no rock in between.
+  nearestPrey(range) {
+    let best = null, bestD = range;
+    for (const p of this.game.livePlayers()) {
+      const d = Math.hypot(p.x - this.position.x, p.z - this.position.z);
+      if (d < bestD && this.level.rockBetween(this.position, p) === 0) { best = p; bestD = d; }
+    }
+    return best;
   }
 
   // ------------------------------------------------------------------
@@ -405,7 +520,8 @@ export class Creature {
   updateSteps(moved) {
     this.stepLeft -= moved;
     if (this.stepLeft > 0) return;
-    this.stepLeft = C.stepLength;
+    this.stepLeft = this.sp.stepLength || C.stepLength;
+    if (this.sp.silent) return; // the Shade makes no sound at all
     this.fx('step', new THREE.Vector3(this.position.x, 0.1, this.position.z));
   }
 
@@ -413,8 +529,9 @@ export class Creature {
   updateClicks(dt) {
     this.clickTimer -= dt;
     if (this.clickTimer > 0) return;
+    if (this.sp.silent || this.type === 'mimic') return; // the Shade never clicks; the Mimic fakes sounds instead
     const range = { WANDER: C.clickWander, INVESTIGATE: C.clickInvestigate, HUNT: C.clickHunt }[this.state];
-    this.clickTimer = rand(range);
+    this.clickTimer = rand(range) * this.sp.clickEvery;
     this.fx('click', this.headPosition());
   }
 
@@ -436,8 +553,21 @@ export class Creature {
     b.armR.rotation.z = 0.06 - Math.sin(this.game.time * 1.1) * 0.04;
     b.torso.rotation.x = this.state === HUNT ? 0.5 : 0.25;
     b.torso.rotation.z = Math.sin(this.walkPhase * 0.5) * 0.06;
-    if (this.shouldStare()) this.stareAtPlayer(dt);
+    if (this.type === 'crawler') this.crawlPose(s);
+    else if (this.type === 'mimic') this.body.head.rotation.set(0.15, 0, 0.55); // head cocked, unmoving
+    else if (this.shouldStare()) this.stareAtPlayer(dt);
     else this.twitchHead(dt);
+  }
+
+  // The Crawler: bent fully forward, arms reaching to the floor like front legs.
+  crawlPose(s) {
+    const b = this.body;
+    b.torso.rotation.x = 1.3;
+    b.armL.rotation.x = -1.25 + s * 0.5;
+    b.armR.rotation.x = -1.25 - s * 0.5;
+    b.armL.rotation.z = -0.15;
+    b.armR.rotation.z = 0.15;
+    b.head.rotation.set(-1.0, 0, 0); // looking ahead
   }
 
   // Knocked out: on its knees, slumped forward, head hanging. Twitches before waking.
@@ -496,6 +626,8 @@ export class Creature {
       const near = Math.min(1, (1 - d / C.eyeGlowDistance) * 1.6);
       stare = (this.state === HUNT ? C.eyeGlowHunting : C.eyeGlow) * near;
     }
+    if (this.sp.silent) stare = 0;                               // the Shade's eyes never glow by themselves
+    if (this.type === 'mimic') stare = this.lungeLeft > 0 || this.state === HUNT ? 1 : 0; // eyes only show when it lunges
     this.flare = Math.max(0, this.flare - dt * 1.5);
     if (this.state !== HUNT && (this.blinkTimer -= dt) <= 0) {
       this.blinkTimer = rand(C.blinkEvery);
@@ -508,6 +640,7 @@ export class Creature {
 
   // Close by, you can hear it breathe. Slow, wet, rattling breaths.
   updateBreathing(dt) {
+    if (this.sp.silent || this.type === 'mimic') return;
     const d = this.distanceToPlayer();
     if (d > C.breathDistance || (this.breathTimer -= dt) > 0) return;
     this.breathTimer = this.state === HUNT ? 1.5 : 2.6 + Math.random();

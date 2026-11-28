@@ -116,6 +116,20 @@ then reach the old elevator at the far end of the mine.
 
 All keys can be changed in the `keys` section of `src/config.js`.
 
+### Creatures
+
+The **Listener** is always in the mine. Each run, other creatures may join it:
+
+| Creature | Chance per run | What it does |
+| --- | --- | --- |
+| **Crawler** | 45% | Knee-high and fast, scuttling on all fours. It hunts by sound like the Listener but hears less far. Rapid little clicks, small red pulses. |
+| **Mimic** | 20% | Barely moves. It **fakes sounds to lure you**: a clap (with a pulse in your colour), footsteps, or a tuning fork's hum (with a gold ripple). Get within 3 m and it lunges, faster than you can run. |
+| **Shade** | 8% | Completely silent: no clicks, no footsteps, no breathing, and its eyes never glow on their own. You only see it when a pulse washes over it. |
+
+Darts stun whichever creature they hit, and any of them can catch you (the Game Over screen
+says which). The chances, speeds and hearing of each one are in the `species` section of
+`src/config.js`. Set a `chance` to `1` to meet that creature every time, or `0` to remove it.
+
 ### Things in the mine
 - **Crevices:** gaps across a tunnel, marked by the stubs of a broken plank bridge. Jump over
   them. Miss, and you fall in with a loud crash that the creature hears, then climb back out.
